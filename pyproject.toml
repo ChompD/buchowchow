@@ -1,0 +1,4 @@
+[tool.pytest.ini_options]
+# Let tests import pet.py, ui.py, etc. from the project root.
+pythonpath = ["."]
+testpaths = ["tests"]

@@ -1,0 +1,32 @@
+# Python cache and build output
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Test and tool caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Editors and IDEs
+.vscode/
+.idea/
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Local save data (added in a later phase)
+save.json
+saves/
+
+# Secrets
+.env
