@@ -1,6 +1,6 @@
 # Desktop Pet
 
-A cute, cozy virtual pet built with Python and Pygame. Name your pet, feed it, play with it, pet it, and watch it level up and grow from a baby into royalty.
+A cute, cozy virtual pet built with Python and Pygame. Pick a fluffy dog, a gray cat or a bunny, name it, feed it, play with it, pet it, and watch it level up and grow from a baby into royalty.
 
 When you want it nearby while you work, switch to **companion mode**: the pet hops out of its window and sits on your desktop, always on top, with a see-through background.
 
@@ -8,8 +8,12 @@ When you want it nearby while you work, switch to **companion mode**: the pet ho
 
 ## Features
 
+- Three kinds of pet to choose from:
+  - **Dog**: a fluffy golden pup with a topknot, floppy dark-tipped ears and a wagging tail
+  - **Gray cat**: forehead stripes, whiskers and a curly tail
+  - **Bunny**: tall ears, little teeth and a cotton tail
 - Name your pet when the game starts (or keep the default, "Mochi")
-- A random personality for every pet (cheerful, playful, foodie, sleepy or shy) that flavours what it says
+- A random personality for every pet (cheerful, playful, foodie, sleepy or shy) and species-specific lines ("*wags tail*", "Purrr...", "*binky!*")
 - **Feed** and **Play** buttons, and click the pet to give it a pat
 - Hunger, happiness and energy stats that change over time, kept between 0 and 100
 - XP and levels, with each level needing a bit more XP than the last
@@ -52,7 +56,7 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 python main.py
 ```
 
-1. Type a name and press **Enter** (or click **Start**).
+1. Pick a dog, gray cat or bunny (click a card, or use the arrow keys), type a name, and press **Enter** (or click **Start**).
 2. Click **Feed** or **Play**, or click the pet itself.
 3. Watch the stats and your pet's mood change over time.
 
@@ -130,8 +134,8 @@ buchowchow/
 ├── desktop_window.py    # See-through window (Windows) and keeping the pet on screen
 ├── pet.py               # Pet rules: stats, actions, XP, moods, personality, evolution (no Pygame)
 ├── save_manager.py      # Saving/loading save.json, offline time, damaged-file backups
-├── messages.py          # Everything the pet can say, by situation and personality
-├── ui.py                # Drawing: colours, buttons, bars, speech bubble, the pet and its animations
+├── messages.py          # Everything the pet can say, by situation, personality and species
+├── ui.py                # Drawing: colours, buttons, bars, speech bubble, the pets and their animations
 ├── effects.py           # Particles, floating text and the level-up / evolution banner
 ├── sounds.py            # Generated sound effects
 ├── assets/
@@ -149,6 +153,10 @@ The game rules in `pet.py` don't import Pygame, so they can be tested without op
 The full game and the companion share their behaviour through `screens.PetScreen` (talking, reacting, animations, autosave). `GameScreen` and `CompanionScreen` only decide the layout and how you interact.
 
 Animations work as **poses**: each frame, `ui.idle_pose` (for moods) or `ui.action_pose` (for one-off actions) describes how high the pet is, how squished or rotated it is, and which face it makes. `ui.PetRenderer` then draws that pose. To switch to custom sprites later, only `PetRenderer` needs to change.
+
+Each kind of pet is described in `ui.SPECIES_LOOKS`: its colours, ear style, tail, nose and extras like whiskers or teeth. To add a new animal, add an entry there, add it to `SPECIES` in `messages.py`, and optionally give it its own lines in `BY_SPECIES`.
+
+Saves from before species existed load as a dog.
 
 ## Roadmap
 
