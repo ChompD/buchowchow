@@ -37,7 +37,7 @@ class App:
         self.clock = pygame.time.Clock()
         self.fonts = ui.Fonts()
         self.background = ui.make_gradient((WIDTH, HEIGHT), ui.BG_TOP, ui.BG_BOTTOM)
-        self.pet_renderer = ui.PetRenderer(self.fonts.small)
+        self.pet_renderer = ui.PetRenderer(self.fonts.small, self.fonts.title)
         self.window.set_icon(self._make_icon())
         self.sounds = sounds.SoundBank(SOUND_FOLDER)
         self.save_manager = SaveManager(save_path)

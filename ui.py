@@ -292,12 +292,42 @@ class Pose:
     zs: bool = False        # floating "z z z"
     food: float = 0.0       # how much cookie is left (0 = no cookie)
     step: float = None      # walking: paw step phase (None = standing still)
+    paw_spread: float = 1.0  # how far apart the front paws are
+    mark: str = None        # a "?" or "!" floating by the head
 
 
 def walk_pose(t):
     """Little bouncy steps, looking where it's going (the drawing is flipped to face right)."""
     step = t * 9
     return Pose(lift=abs(math.sin(step)) * 4, angle=math.sin(step) * 3, look=-1, step=step)
+
+
+def activity_pose(activity, t, progress, mood):
+    """Poses for the companion's own activities (see wander.py). None means "use the mood's idle"."""
+    if activity == "walk":
+        return walk_pose(t)
+    if activity == "run":
+        step = t * 17
+        return Pose(lift=abs(math.sin(step)) * 10, angle=math.sin(step) * 5, sx=1.04, sy=0.97,
+                    look=-1, step=step, eyes="happy", mouth="smile")
+    if activity == "sit":
+        breathe = math.sin(t * 2)
+        return Pose(sx=1.06 + 0.01 * breathe, sy=0.92 - 0.01 * breathe, paw_spread=0.75,
+                    look=math.sin(t * 0.4) ** 5 * 0.6)
+    if activity == "lie":
+        breathe = math.sin(t * 1.2)
+        return Pose(sx=1.18 + 0.012 * breathe, sy=0.74 - 0.012 * breathe, paw_spread=1.45,
+                    eyes="closed", mouth="small", zs=mood == "tired")
+    if activity == "look":
+        look = math.sin(t * 1.3)
+        return Pose(look=look, angle=-look * 4, lift=(math.sin(t * 2.4) + 1) * 1.5)
+    if activity == "tilt":
+        tilt = math.sin(math.pi * min(1.0, progress))  # ease into the tilt and back out
+        return Pose(angle=14 * tilt, look=0.3 * tilt, mouth="small", mark="?" if tilt > 0.3 else None)
+    if activity == "bark":
+        hop = abs(math.sin(t * 14))
+        return Pose(lift=hop * 6, sx=1 + 0.05 * hop, sy=1 - 0.05 * hop, mouth="chomp", look=-1, mark="!")
+    return None
 
 
 def idle_pose(mood, t):
@@ -396,25 +426,32 @@ class PetRenderer:
     BODY_W = 190
     BODY_H = 160
 
-    def __init__(self, z_font):
+    def __init__(self, z_font, mark_font=None):
         self.z_font = z_font
+        self.mark_font = mark_font or z_font
 
     def draw(self, surface, mood, ground, t, stage=0, action=None, progress=0.0, zoom=1.0,
-             shadow=True, species="dog", outfit=None, walking=False, facing=-1):
+             shadow=True, species="dog", outfit=None, activity=None, activity_progress=0.0,
+             facing=-1, gaze=None):
         """Draw the pet with its feet at `ground` (x, y).
 
-        `walking` shows walking steps; `facing` is -1 (left, as drawn) or 1 (right, mirrored).
+        `activity` is something the companion is doing on its own (walk, run, sit,
+        lie, look, tilt, bark). `facing` is -1 (left, as drawn) or 1 (right,
+        mirrored). `gaze` makes open eyes look a fixed way (-1 = where it faces).
 
         `zoom` shrinks or grows the whole pet (the companion window uses a small
         pet). `shadow=False` skips the ground shadow. `outfit` is a
         wardrobe.Outfit (or None for no clothes).
         """
+        pose = None
         if action:
             pose = action_pose(action, progress)
-        elif walking:
-            pose = walk_pose(t)
-        else:
+        elif activity:
+            pose = activity_pose(activity, t, activity_progress, mood)
+        if pose is None:
             pose = idle_pose(mood, t)
+        if gaze is not None and pose.eyes in ("open", "sad"):
+            pose.look = gaze
         look = stage_look(stage)
         kind = species_look(species)
         s = look["scale"] * zoom
@@ -452,6 +489,11 @@ class PetRenderer:
                 z.set_alpha(round(255 * (1 - phase)))
                 surface.blit(z, z.get_rect(center=(cx + w * 0.42 + phase * 24 * s,
                                                   body_y - h * 0.45 - phase * 46 * s)))
+        if pose.mark:
+            bob = math.sin(t * 6) * 3 * s
+            mark = self.mark_font.render(pose.mark, True, XP_COLOR)
+            side = 1 if facing > 0 else -1  # on the side it's facing
+            surface.blit(mark, mark.get_rect(center=(cx + dx + side * w * 0.45, body_y - h * 0.5 + bob)))
 
     def contains(self, ground, pos, stage=0, zoom=1.0):
         """True if screen position `pos` is on the pet (for click detection)."""
@@ -502,7 +544,7 @@ class PetRenderer:
             lift = 0.0
             if pose.step is not None:  # walking: paws take turns lifting
                 lift = max(0.0, math.sin(pose.step + (0 if side < 0 else math.pi))) * 6 * s
-            paw.center = (bx + side * w * 0.22, by + h * 0.44 - lift)
+            paw.center = (bx + side * w * 0.22 * pose.paw_spread, by + h * 0.44 - lift)
             pygame.draw.ellipse(canvas, outline, paw.inflate(6, 6))
             pygame.draw.ellipse(canvas, body_color, paw)
 

@@ -1,7 +1,10 @@
 """Companion mode: a small, borderless, always-on-top pet that lives on your desktop.
 
-- The pet strolls along the top of the taskbar now and then (see wander.py).
-- "Stay here" (menu or S) makes it sit in one spot instead. "Walk around" turns walking back on.
+- The pet keeps itself busy (see wander.py): it walks and runs along the top of the
+  taskbar, sits, lies down, looks around, tilts its head, and sometimes barks
+  (or meows, or thumps) when your cursor comes close.
+- "Stay here" (menu or S) keeps it in one spot: it still does everything except walk
+  and run. "Walk around" lets it roam again.
 - Drag the pet to move it. While walking is on it drops back down to the taskbar;
   in Stay mode it stays where you put it, snapping to the taskbar or a screen side if close.
 - Click the pet to give it a pat. Hover over it to see its stats.
@@ -20,6 +23,8 @@ SIZE = (240, 280)
 DRAG_THRESHOLD = 4   # pixels the mouse must move before a click becomes a drag
 GRAVITY = 1800       # how fast a dropped pet falls, in pixels per second per second
 AREA_REFRESH = 5.0   # re-check where the taskbar is every few seconds
+NOTICE_DISTANCE = 200  # the pet notices the cursor when it comes this close (pixels)
+CURSOR_SOUNDS = {"dog": "bark", "cat": "meow", "bunny": "thump"}
 
 MENU_ITEM_HEIGHT = 28
 MENU_WIDTH = 150
@@ -47,6 +52,7 @@ class CompanionScreen(PetScreen):
         self.fall_speed = 0.0
         self.area = None
         self.area_timer = 0.0
+        self.cursor_near = False
 
     # ---- Input ----
 
@@ -116,8 +122,8 @@ class CompanionScreen(PetScreen):
         self.app.walking = not self.app.walking
         self.say(self.pet.say("walk_on" if self.app.walking else "stay"))
         self.fall_speed = 0.0
-        if not self.app.walking:
-            self.wanderer.walking = False  # sit down right away
+        if not self.app.walking and self.wanderer.walking:
+            self.wanderer.timer = 0  # stop and pick something calm to do
         self.app.sounds.play("click")
         self.app.save()
 
@@ -146,9 +152,15 @@ class CompanionScreen(PetScreen):
             self.area = desktop_window.work_area(self.app.desktop_size())
         return self.area
 
-    def can_walk(self):
-        """Walk only when nobody is interacting with the pet."""
+    def can_act(self):
+        """Do its own thing only when nobody is interacting with the pet."""
         return not (self.hovered or self.menu or self.press or self.action)
+
+    def shown_activity(self):
+        """What to draw: the current activity, unless it has been paused mid-walk."""
+        if self.fall_speed or (self.wanderer.walking and not (self.can_act() and self.app.walking)):
+            return None
+        return self.wanderer.activity
 
     # ---- Update ----
 
@@ -164,8 +176,8 @@ class CompanionScreen(PetScreen):
         mouse = desktop_mouse()
         if self.press:
             self.drag(mouse)
-        elif self.app.walking:
-            self.move_on_its_own(dt)
+        else:
+            self.live(dt)
 
         # Work out hover from the desktop mouse position, because the window
         # gets no mouse events at all while the cursor is over see-through parts.
@@ -176,6 +188,21 @@ class CompanionScreen(PetScreen):
         if want_hand != self.hand_cursor:
             self.hand_cursor = want_hand
             ui.set_hand_cursor(want_hand)
+        self.watch_cursor(local)
+
+    def watch_cursor(self, local):
+        """Notice the cursor coming close: face it, and sometimes bark at it."""
+        center_x, center_y = self.pet_center()
+        dx, dy = local[0] - center_x, local[1] - center_y
+        near = (abs(dx) < NOTICE_DISTANCE and abs(dy) < NOTICE_DISTANCE
+                and not self.hovered and self.can_act() and not self.fall_speed)
+        if near and not self.cursor_near and self.wanderer.notice_cursor(dx):
+            self.facing = 1 if dx > 0 else -1
+            self.say(self.pet.say("cursor"))
+            self.app.sounds.play(CURSOR_SOUNDS.get(self.pet.species, "bark"))
+        if near and not self.wanderer.walking:
+            self.facing = 1 if dx > 0 else -1  # keep watching it
+        self.cursor_near = near
 
     def drag(self, mouse):
         """Move the window by however far the mouse moved since the press."""
@@ -190,27 +217,30 @@ class CompanionScreen(PetScreen):
             self.app.window.position = (win_x + dx, win_y + dy)
             self.pos = [float(win_x + dx), float(win_y + dy)]
 
-    def move_on_its_own(self, dt):
-        """Fall down to the taskbar if needed, then wander along it."""
-        area = self.work_area()
-        floor = desktop_window.ground_y(area, self.FEET_Y)
-        low, high = desktop_window.walk_bounds(area, SIZE[0], self.pet_half_width())
+    def live(self, dt):
+        """Do its own thing: fall down to the taskbar if needed (when walking is on),
+        then walk, run, sit, lie down, look around or tilt its head."""
         x, y = self.pos
+        if self.app.walking:
+            area = self.work_area()
+            floor = desktop_window.ground_y(area, self.FEET_Y)
+            low, high = desktop_window.walk_bounds(area, SIZE[0], self.pet_half_width())
+            if y < floor - 0.5:  # in the air: fall
+                self.fall_speed += GRAVITY * dt
+                y = min(floor, y + self.fall_speed * dt)
+                if y >= floor:
+                    self.fall_speed = 0.0
+                    self.start_action("land")
+                    self.app.sounds.play("click")
+            else:
+                y = floor  # also pops it back up if it was dragged into the taskbar
+                if self.can_act():
+                    x = self.wanderer.update(dt, x, low, high, self.pet.mood)
+        elif self.can_act():
+            self.wanderer.update(dt, x, x, x, self.pet.mood, can_move=False)  # Stay: never moves
 
-        if y < floor - 0.5:  # in the air: fall
-            self.fall_speed += GRAVITY * dt
-            y = min(floor, y + self.fall_speed * dt)
-            if y >= floor:
-                self.fall_speed = 0.0
-                self.start_action("land")
-                self.app.sounds.play("click")
-        else:
-            y = floor  # also pops it back up if it was dragged into the taskbar
-            if self.can_walk():
-                x = self.wanderer.update(dt, x, low, high, self.pet.mood)
-                if self.wanderer.walking:
-                    self.facing = self.wanderer.direction
-
+        if self.wanderer.walking:
+            self.facing = self.wanderer.direction
         self.pos = [x, y]
         target = (round(x), round(y))
         if self.app.window.position != target:
@@ -225,8 +255,9 @@ class CompanionScreen(PetScreen):
         else:
             surface.blit(self.app.background, (0, 0))
 
-        walking = self.app.walking and self.wanderer.walking and self.can_walk() and not self.fall_speed
-        self.draw_pet(surface, shadow=not see_through, walking=walking, facing=self.facing)
+        gaze = -1 if self.cursor_near and not self.wanderer.walking else None  # look at the cursor
+        self.draw_pet(surface, shadow=not see_through, activity=self.shown_activity(),
+                      activity_progress=self.wanderer.progress, facing=self.facing, gaze=gaze)
         self.effects.draw(surface)
         if self.message:
             # No fade-out here: half-transparent pixels would mix with the key colour.

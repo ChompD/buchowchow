@@ -314,12 +314,13 @@ class PetScreen:
 
     # ---- Drawing helpers ----
 
-    def draw_pet(self, surface, shadow=True, walking=False, facing=-1):
+    def draw_pet(self, surface, shadow=True, activity=None, activity_progress=0.0, facing=-1, gaze=None):
         progress = self.action_time / ui.ACTION_DURATIONS[self.action] if self.action else 0.0
         self.app.pet_renderer.draw(surface, self.pet.mood, self.PET_GROUND, self.time, stage=self.pet.stage,
                                    action=self.action, progress=min(1.0, progress),
                                    zoom=self.ZOOM, shadow=shadow, species=self.pet.species,
-                                   outfit=self.pet.outfit, walking=walking, facing=facing)
+                                   outfit=self.pet.outfit, activity=activity,
+                                   activity_progress=activity_progress, facing=facing, gaze=gaze)
 
 
 class GameScreen(PetScreen):

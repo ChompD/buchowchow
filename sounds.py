@@ -1,7 +1,7 @@
 """Small sound effects, generated in code so the project needs no audio files.
 
 To use your own sounds instead, drop a file named after the effect (for
-example `fed.wav` or `level_up.ogg`) into assets/sounds/.
+example `fed.wav`, `level_up.ogg` or `bark.wav`) into assets/sounds/.
 
 If the computer has no working audio device, the game simply stays silent.
 """
@@ -29,6 +29,10 @@ RECIPES = {
     "evolve": [(523, 523, 0.08, "square"), (659, 659, 0.08, "square"), (784, 784, 0.08, "square"),
                (1047, 1047, 0.08, "square"), (1319, 1319, 0.08, "square"), (1568, 1568, 0.36, "square")],
     "click": [(1100, 900, 0.03, "sine")],
+    # Noticing the cursor (one per species)
+    "bark": [(560, 400, 0.07, "square"), (0, 0, 0.05, "sine"), (600, 420, 0.08, "square")],
+    "meow": [(480, 820, 0.16, "triangle"), (820, 540, 0.24, "triangle")],
+    "thump": [(140, 80, 0.06, "triangle"), (0, 0, 0.07, "sine"), (140, 80, 0.06, "triangle")],
 }
 
 

@@ -48,6 +48,9 @@ COMMON = {
         "I'll hang out right here.",
         "Don't mind me!",
     ],
+    "cursor": [
+        "Hey, I see you!",
+    ],
     "walk_on": [
         "Let's go for a walk!",
         "Adventure time!",
@@ -139,6 +142,7 @@ BY_SPECIES = {
         "outfit": ["*proud tail wag*"],
         "stay": ["*sits like a good pup*"],
         "walk_on": ["Walkies!!"],
+        "cursor": ["Woof!", "Woof woof!", "Arf!"],
     },
     "cat": {
         "petted": ["Purrr...", "Mrrrp!"],
@@ -146,8 +150,10 @@ BY_SPECIES = {
         "idle_content": ["*grooms paw*", "*stares at nothing*"],
         "idle_happy": ["Mrrrow~"],
         "welcome_back": ["Oh. You're back. ...I didn't miss you. Much."],
+        "cursor": ["Meow!", "Mrrp?", "*pounce stance*"],
     },
     "bunny": {
+        "cursor": ["*thump thump*", "*sniffs at the cursor*"],
         "petted": ["*happy nose wiggle*"],
         "fed": ["*munch munch munch*"],
         "played": ["*binky!*"],
