@@ -4,11 +4,12 @@ import random
 
 import pytest
 
-from messages import PERSONALITIES
+from messages import PERSONALITIES, SPECIES
 from pet import (
     CUDDLE_COOLDOWN,
     CUDDLE_HAPPINESS,
     DEFAULT_NAME,
+    DEFAULT_SPECIES,
     EVOLUTION_STAGES,
     FEED_XP,
     MAX_NAME_LENGTH,
@@ -335,3 +336,30 @@ def test_from_dict_clamps_out_of_range_values():
 def test_from_dict_rejects_bad_data(data):
     with pytest.raises(ValueError):
         Pet.from_dict(data)
+
+
+# ---- Species ----
+
+def test_new_pet_is_a_dog_by_default():
+    assert Pet("Bean").species == DEFAULT_SPECIES == "dog"
+
+
+@pytest.mark.parametrize("species", SPECIES)
+def test_chosen_species_is_kept(species):
+    pet = Pet("Bean", species=species)
+    assert pet.species == species
+    assert pet.species_name
+
+
+@pytest.mark.parametrize("species", [None, "dragon", 42, ""])
+def test_unknown_species_becomes_the_default(species):
+    assert Pet("Bean", species=species).species == DEFAULT_SPECIES
+
+
+def test_species_is_saved_and_loaded():
+    pet = Pet("Bean", species="bunny")
+    assert Pet.from_dict(pet.to_dict()).species == "bunny"
+
+
+def test_old_saves_without_species_load_as_dogs():
+    assert Pet.from_dict({"name": "Chowchow", "level": 4}).species == "dog"

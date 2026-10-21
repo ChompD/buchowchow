@@ -8,13 +8,14 @@ import math
 import random
 from dataclasses import dataclass
 
-from messages import PERSONALITIES, pick
+from messages import PERSONALITIES, SPECIES, SPECIES_NAMES, pick
 
 STAT_MIN = 0
 STAT_MAX = 100
 
 DEFAULT_NAME = "Mochi"
 MAX_NAME_LENGTH = 12
+DEFAULT_SPECIES = "dog"  # also used for saves from before species existed
 
 # Passive changes per second while the app is open.
 HUNGER_RATE = 1 / 6        # +1 hunger every 6 seconds
@@ -108,7 +109,7 @@ class Pet:
     """
 
     def __init__(self, name, hunger=30, happiness=70, energy=80, xp=0, level=1,
-                 personality=None, rng=None):
+                 personality=None, rng=None, species=DEFAULT_SPECIES):
         self.rng = rng or random.Random()
         self.name = clean_name(name)
         self.hunger = clamp(hunger)
@@ -120,6 +121,7 @@ class Pet:
         if personality not in PERSONALITIES:
             personality = self.rng.choice(PERSONALITIES)
         self.personality = personality
+        self.species = species if species in SPECIES else DEFAULT_SPECIES
         self.cuddle_cooldown = 0.0
 
     # ---- Time ----
@@ -224,6 +226,7 @@ class Pet:
         """Everything needed to bring this pet back later (JSON-friendly)."""
         return {
             "name": self.name,
+            "species": self.species,
             "personality": self.personality,
             "hunger": round(self.hunger, 2),
             "happiness": round(self.happiness, 2),
@@ -252,7 +255,8 @@ class Pet:
             if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
                 raise ValueError(f"{key} must be a number")
             numbers[key] = value
-        return cls(name, personality=data.get("personality"), rng=rng, **numbers)
+        return cls(name, personality=data.get("personality"), species=data.get("species"),
+                   rng=rng, **numbers)
 
     # ---- Mood and talking ----
 
@@ -274,8 +278,12 @@ class Pet:
 
     def say(self, kind):
         """A random line for this situation, flavoured by personality."""
-        return pick(kind, self.personality, self.rng,
+        return pick(kind, self.personality, self.rng, species=self.species,
                     name=self.name, level=self.level, stage=self.stage_name)
+
+    @property
+    def species_name(self):
+        return SPECIES_NAMES[self.species]
 
     def idle_message(self):
         """Something the pet says on its own, based on how it feels."""

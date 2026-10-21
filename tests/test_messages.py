@@ -4,7 +4,16 @@ import random
 
 import pytest
 
-from messages import BY_PERSONALITY, COMMON, PERSONALITIES, format_duration, pick
+from messages import (
+    BY_PERSONALITY,
+    BY_SPECIES,
+    COMMON,
+    PERSONALITIES,
+    SPECIES,
+    SPECIES_NAMES,
+    format_duration,
+    pick,
+)
 
 KINDS = list(COMMON)
 VALUES = {"name": "Bean", "level": 2, "stage": "Junior"}
@@ -12,12 +21,14 @@ VALUES = {"name": "Bean", "level": 2, "stage": "Junior"}
 
 @pytest.mark.parametrize("kind", KINDS)
 @pytest.mark.parametrize("personality", PERSONALITIES)
-def test_every_situation_has_lines(kind, personality):
-    assert pick(kind, personality, random.Random(1), **VALUES)
+@pytest.mark.parametrize("species", SPECIES)
+def test_every_situation_has_lines(kind, personality, species):
+    assert pick(kind, personality, random.Random(1), species=species, **VALUES)
 
 
 def test_every_line_formats_without_errors():
-    pools = list(COMMON.values()) + [lines for extra in BY_PERSONALITY.values() for lines in extra.values()]
+    extras = list(BY_PERSONALITY.values()) + list(BY_SPECIES.values())
+    pools = list(COMMON.values()) + [lines for extra in extras for lines in extra.values()]
     for lines in pools:
         for line in lines:
             assert "{" not in line.format_map(VALUES)
@@ -27,6 +38,18 @@ def test_personality_lines_only_use_known_situations():
     assert set(BY_PERSONALITY) <= set(PERSONALITIES)
     for extra in BY_PERSONALITY.values():
         assert set(extra) <= set(COMMON)
+
+
+def test_species_lines_only_use_known_situations():
+    assert set(BY_SPECIES) <= set(SPECIES)
+    assert set(SPECIES_NAMES) == set(SPECIES)
+    for extra in BY_SPECIES.values():
+        assert set(extra) <= set(COMMON)
+
+
+def test_species_lines_can_be_picked():
+    lines = {pick("petted", None, random.Random(seed), species="dog", **VALUES) for seed in range(50)}
+    assert lines & set(BY_SPECIES["dog"]["petted"])
 
 
 def test_names_are_filled_in():

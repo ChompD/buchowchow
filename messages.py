@@ -1,13 +1,16 @@
-"""Everything the pet can say, grouped by situation and personality.
+"""Everything the pet can say, grouped by situation, personality and species.
 
 Lines may use {name}, {level} and {stage}. Add as many as you like: the game picks one
-at random. Personality lines are mixed in with the common ones, and are a bit
-more likely to be picked so each personality feels different.
+at random. Personality and species lines are mixed in with the common ones, and
+are a bit more likely to be picked so each pet feels different.
 """
 
 import random
 
 PERSONALITIES = ("cheerful", "playful", "foodie", "sleepy", "shy")
+
+SPECIES = ("dog", "cat", "bunny")
+SPECIES_NAMES = {"dog": "Dog", "cat": "Gray cat", "bunny": "Bunny"}
 
 COMMON = {
     "fed": [
@@ -30,7 +33,6 @@ COMMON = {
     ],
     "petted": [
         "Hehe, that tickles!",
-        "Purrr...",
         "More pets, please!",
     ],
     "level_up": [
@@ -110,11 +112,37 @@ BY_PERSONALITY = {
     },
 }
 
+BY_SPECIES = {
+    "dog": {
+        "petted": ["*wags tail*", "Woof!"],
+        "fed": ["*happy crunching*"],
+        "played": ["Woof woof!", "Throw it again!"],
+        "idle_content": ["*sniff sniff*"],
+        "idle_happy": ["*tail wagging intensifies*"],
+        "welcome_back": ["*zoomies* You're home!"],
+    },
+    "cat": {
+        "petted": ["Purrr...", "Mrrrp!"],
+        "played": ["Got it! ...the string, I mean."],
+        "idle_content": ["*grooms paw*", "*stares at nothing*"],
+        "idle_happy": ["Mrrrow~"],
+        "welcome_back": ["Oh. You're back. ...I didn't miss you. Much."],
+    },
+    "bunny": {
+        "petted": ["*happy nose wiggle*"],
+        "fed": ["*munch munch munch*"],
+        "played": ["*binky!*"],
+        "idle_content": ["*thump thump*", "*nose twitch*"],
+        "idle_happy": ["*hop hop*"],
+    },
+}
 
-def pick(kind, personality, rng=random, **values):
-    """Pick a random line for this situation and fill in {name}/{level}."""
-    extra = BY_PERSONALITY.get(personality, {}).get(kind, [])
-    pool = COMMON.get(kind, []) + extra * 2  # personality lines count double
+
+def pick(kind, personality, rng=random, species=None, **values):
+    """Pick a random line for this situation and fill in {name}/{level}/{stage}."""
+    extra = (BY_PERSONALITY.get(personality, {}).get(kind, [])
+             + BY_SPECIES.get(species, {}).get(kind, []))
+    pool = COMMON.get(kind, []) + extra * 2  # personality and species lines count double
     if not pool:
         return ""
     return rng.choice(pool).format_map(values)
