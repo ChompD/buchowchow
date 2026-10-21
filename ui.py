@@ -4,6 +4,7 @@ Nothing in here changes game state. It only draws what it is given.
 """
 
 import math
+from dataclasses import dataclass
 
 import pygame
 
@@ -20,6 +21,7 @@ HUNGER_COLOR = (255, 176, 120)
 HAPPY_COLOR = (255, 138, 178)
 ENERGY_COLOR = (118, 196, 232)
 XP_COLOR = (168, 136, 240)
+GOLD = (255, 206, 92)
 
 FEED_COLOR = (255, 158, 112)
 PLAY_COLOR = (132, 164, 248)
@@ -35,6 +37,10 @@ PET_TONGUE = (255, 150, 170)
 PET_DROOL = (160, 205, 240)
 GROUND_SHADOW = (228, 214, 234)
 
+COOKIE = (222, 166, 104)
+COOKIE_DARK = (150, 96, 60)
+COOKIE_CHIP = (98, 62, 48)
+
 FONT_NAMES = "segoeui,verdana,arial"
 
 
@@ -42,6 +48,7 @@ class Fonts:
     """All fonts, loaded once at startup (loading fonts every frame is slow)."""
 
     def __init__(self):
+        self.banner = pygame.font.SysFont(FONT_NAMES, 30, bold=True)
         self.title = pygame.font.SysFont(FONT_NAMES, 28, bold=True)
         self.button = pygame.font.SysFont(FONT_NAMES, 22, bold=True)
         self.body = pygame.font.SysFont(FONT_NAMES, 18)
@@ -92,6 +99,14 @@ def draw_curve(surface, color, center, radii, start, end, width, steps=24):
         pygame.draw.circle(surface, color, (cx + rx * math.cos(a), cy + ry * math.sin(a)), width / 2)
 
 
+def set_hand_cursor(on):
+    """Show a pointing-hand cursor over clickable things."""
+    try:
+        pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND if on else pygame.SYSTEM_CURSOR_ARROW)
+    except pygame.error:
+        pass  # some systems don't support system cursors; not important
+
+
 # ---- Widgets ----
 
 class Button:
@@ -126,6 +141,30 @@ class Button:
         pygame.draw.rect(surface, color, body, border_radius=radius)
         label = self.font.render(self.label, True, WHITE)
         surface.blit(label, label.get_rect(center=body.center))
+
+
+class SoundButton(Button):
+    """A small round button with a speaker icon that toggles sound."""
+
+    def __init__(self, rect):
+        super().__init__(rect, "", WHITE, None)
+        self.muted = False
+
+    def draw(self, surface):
+        radius = self.rect.width // 2
+        center = (self.rect.centerx, self.rect.centery + (2 if self.pressed else 0))
+        pygame.draw.circle(surface, PANEL_SHADOW, (self.rect.centerx, self.rect.centery + 3), radius)
+        pygame.draw.circle(surface, mix(WHITE, BAR_BG, 0.8) if self.hovered else WHITE, center, radius)
+
+        x, y = center[0] - 6, center[1]
+        pygame.draw.polygon(surface, TEXT, [(x - 5, y - 4), (x - 1, y - 4), (x + 4, y - 8),
+                                            (x + 4, y + 8), (x - 1, y + 4), (x - 5, y + 4)])
+        if self.muted:
+            pygame.draw.line(surface, TEXT, (x + 8, y - 4), (x + 15, y + 4), 2)
+            pygame.draw.line(surface, TEXT, (x + 8, y + 4), (x + 15, y - 4), 2)
+        else:
+            draw_curve(surface, TEXT, (x + 5, y), (5, 5), -math.pi / 3, math.pi / 3, 2, steps=10)
+            draw_curve(surface, TEXT, (x + 5, y), (10, 10), -math.pi / 3, math.pi / 3, 2, steps=14)
 
 
 def draw_panel(surface, rect, radius=18):
@@ -184,22 +223,89 @@ def draw_speech_bubble(surface, font, text, anchor, alpha=255, max_width=300):
 
 # ---- The pet ----
 
-# (bob speed, bob height in px) for each mood
-MOTION = {
-    "happy": (6.0, 12),
-    "content": (2.4, 5),
-    "hungry": (3.2, 4),
-    "sad": (1.4, 3),
-    "tired": (1.0, 3),
+# How long each one-off animation lasts, in seconds.
+ACTION_DURATIONS = {
+    "eating": 1.2,
+    "playing": 1.3,
+    "petted": 0.9,
+    "refuse": 0.6,
 }
+
+
+@dataclass
+class Pose:
+    """How the pet looks in one frame. Animations are just poses that change over time."""
+
+    lift: float = 0.0       # pixels above the ground
+    sx: float = 1.0         # horizontal stretch (squash and stretch)
+    sy: float = 1.0         # vertical stretch
+    angle: float = 0.0      # rotation in degrees (counter-clockwise)
+    dx: float = 0.0         # sideways shake
+    eyes: str = "open"      # open, happy, closed, sad
+    mouth: str = "w"        # w, smile, chomp, open, frown, small
+    look: float = 0.0       # where the eyes look: -1 left .. 1 right
+    blush: float = 1.0      # blush size
+    drool: bool = False
+    tear: float = -1.0      # 0..1 while a tear is falling, otherwise negative
+    zs: bool = False        # floating "z z z"
+    food: float = 0.0       # how much cookie is left (0 = no cookie)
+
+
+def idle_pose(mood, t):
+    """The looping animation for each mood. `t` is time in seconds."""
+    breathe = math.sin(t * 2.4)
+    if mood == "happy":
+        hop = math.sin(t * 6.0)
+        return Pose(lift=abs(hop) * 12, sx=1 + 0.035 * hop, sy=1 - 0.035 * hop,
+                    eyes="happy", mouth="smile")
+    if mood == "hungry":
+        rumbling = (t % 4.0) < 0.5  # tummy rumble every few seconds
+        return Pose(lift=(breathe + 1) * 1.5, sx=1 + 0.02 * breathe, sy=1 - 0.02 * breathe,
+                    dx=math.sin(t * 50) * 2.5 if rumbling else 0.0, mouth="open", drool=True)
+    if mood == "tired":
+        slow = math.sin(t * 1.0)
+        return Pose(lift=(slow + 1) * 1.5, sx=1 + 0.03 * slow, sy=1 - 0.03 * slow,
+                    angle=math.sin(t * 0.5) * 4, eyes="closed", mouth="small", zs=True)
+    if mood == "sad":
+        slow = math.sin(t * 1.4)
+        tear = (t % 5.0) / 3.0  # a tear rolls down for 3 of every 5 seconds
+        return Pose(lift=(slow + 1) * 1.5, sx=1.02 + 0.02 * slow, sy=0.97 - 0.02 * slow,
+                    eyes="sad", mouth="frown", tear=tear if tear <= 1 else -1.0)
+    # content: gentle breathing, glancing around now and then
+    return Pose(lift=(breathe + 1) * 2.5, sx=1 + 0.035 * breathe, sy=1 - 0.035 * breathe,
+                look=math.sin(t * 0.5) ** 5)
+
+
+def action_pose(action, p):
+    """One-off animations. `p` is progress from 0.0 to 1.0."""
+    if action == "eating":
+        bite = int(p * 6)
+        chewing = bite % 2 == 1
+        return Pose(sx=1.04 if chewing else 1.0, sy=0.95 if chewing else 1.0, eyes="happy",
+                    mouth="w" if chewing else "chomp", food=max(0.0, 1 - bite / 5))
+    if action == "playing":
+        if p < 0.1:  # crouch before jumping
+            return Pose(sx=1.08, sy=0.9, eyes="happy", mouth="smile")
+        q = (p - 0.1) / 0.9
+        spin = q * q * (3 - 2 * q)  # ease in and out
+        landing = q > 0.88
+        return Pose(lift=math.sin(math.pi * q) * 55, angle=-360 * spin,
+                    sx=1.08 if landing else 0.96, sy=0.9 if landing else 1.06,
+                    eyes="happy", mouth="smile")
+    if action == "petted":
+        wobble = math.sin(p * math.pi * 5) * (1 - p) * 0.08
+        return Pose(sx=1 + wobble, sy=1 - wobble, eyes="happy", mouth="smile", blush=1.5)
+    if action == "refuse":
+        return Pose(dx=math.sin(p * math.pi * 6) * 7 * (1 - p), eyes="closed", mouth="frown")
+    return Pose()
 
 
 class PetRenderer:
     """Draws the placeholder pet using simple shapes.
 
     Want custom pixel art later? Replace `draw` with code that picks an image
-    from assets/sprites based on `mood` and blits it at `center`. The rest of
-    the game only calls `draw(...)`, so nothing else needs to change.
+    from assets/sprites based on `mood` / `action` and blits it at `center`.
+    The rest of the game only calls `draw(...)`, so nothing else needs to change.
     """
 
     BODY_W = 190
@@ -208,112 +314,155 @@ class PetRenderer:
     def __init__(self, z_font):
         self.z_font = z_font
 
-    def draw(self, surface, mood, center, t, scale=1.0):
-        cx, cy = center
+    def draw(self, surface, mood, center, t, scale=1.0, action=None, progress=0.0):
+        """Draw the pet standing on the ground at `center` (the body's resting centre)."""
+        pose = action_pose(action, progress) if action else idle_pose(mood, t)
         s = scale
-        speed, height = MOTION.get(mood, MOTION["content"])
-        wave = math.sin(t * speed)
-        # Happy pets hop; everyone else gently breathes up and down.
-        lift = abs(wave) * height if mood == "happy" else (wave + 1) / 2 * height
-        squash = 0.035 * wave
-        w = self.BODY_W * s * (1 + squash)
-        h = self.BODY_H * s * (1 - squash)
-        bx, by = cx, cy - lift
+        cx, cy = center
+        w = self.BODY_W * s * pose.sx
+        h = self.BODY_H * s * pose.sy
+        ground_y = cy + self.BODY_H * s / 2
 
         # Ground shadow shrinks as the pet lifts off the ground.
-        shadow = pygame.Rect(0, 0, self.BODY_W * s * 0.8 * (1 - lift / 80), 18 * s)
-        shadow.center = (cx, cy + self.BODY_H * s / 2 + 6 * s)
+        shadow = pygame.Rect(0, 0, self.BODY_W * s * 0.8 * max(0.35, 1 - pose.lift / 110), 18 * s)
+        shadow.center = (cx, ground_y + 6 * s)
         pygame.draw.ellipse(surface, GROUND_SHADOW, shadow)
 
-        self._draw_ears(surface, bx, by, w, h)
+        # Draw the pet on its own transparent canvas so the whole thing can rotate.
+        size = round(300 * s)
+        canvas = pygame.Surface((size, size), pygame.SRCALPHA)
+        self._draw_pet(canvas, pose, size / 2, size / 2, w, h, t, s)
+        if pose.angle:
+            canvas = pygame.transform.rotozoom(canvas, pose.angle, 1.0)
+
+        # Keep the feet on the ground when squashed: move the centre down.
+        body_y = ground_y - h / 2 - pose.lift
+        surface.blit(canvas, canvas.get_rect(center=(cx + pose.dx, body_y)))
+
+        if pose.zs:
+            for i in range(3):
+                phase = (t * 0.5 + i / 3) % 1
+                z = self.z_font.render("z", True, TEXT_SOFT)
+                z.set_alpha(round(255 * (1 - phase)))
+                surface.blit(z, z.get_rect(center=(cx + w * 0.42 + phase * 24 * s,
+                                                  body_y - h * 0.45 - phase * 46 * s)))
+
+    def contains(self, center, pos, scale=1.0):
+        """True if screen position `pos` is on the pet (for click detection)."""
+        cx, cy = center
+        rx = self.BODY_W * scale / 2 + 6
+        ry = self.BODY_H * scale / 2 + 14  # a little extra on top for the ears
+        dx, dy = pos[0] - cx, pos[1] - (cy - 8 * scale)
+        return (dx / rx) ** 2 + (dy / ry) ** 2 <= 1
+
+    # ---- Body parts ----
+
+    def _draw_pet(self, canvas, pose, bx, by, w, h, t, s):
+        self._draw_ears(canvas, bx, by, w, h)
 
         body = pygame.Rect(0, 0, w, h)
         body.center = (bx, by)
-        pygame.draw.ellipse(surface, PET_OUTLINE, body.inflate(6, 6))
-        pygame.draw.ellipse(surface, PET_BODY, body)
+        pygame.draw.ellipse(canvas, PET_OUTLINE, body.inflate(6, 6))
+        pygame.draw.ellipse(canvas, PET_BODY, body)
 
         belly = pygame.Rect(0, 0, w * 0.5, h * 0.34)
         belly.center = (bx, by + h * 0.24)
-        pygame.draw.ellipse(surface, PET_BELLY, belly)
+        pygame.draw.ellipse(canvas, PET_BELLY, belly)
 
         for side in (-1, 1):
             paw = pygame.Rect(0, 0, 40 * s, 20 * s)
             paw.center = (bx + side * w * 0.22, by + h * 0.44)
-            pygame.draw.ellipse(surface, PET_OUTLINE, paw.inflate(6, 6))
-            pygame.draw.ellipse(surface, PET_BODY, paw)
+            pygame.draw.ellipse(canvas, PET_OUTLINE, paw.inflate(6, 6))
+            pygame.draw.ellipse(canvas, PET_BODY, paw)
 
-        self._draw_face(surface, mood, bx, by, w, h, t, s)
+        self._draw_face(canvas, pose, bx, by, w, h, t, s)
 
-    def _draw_ears(self, surface, bx, by, w, h):
+    def _draw_ears(self, canvas, bx, by, w, h):
         for side in (-1, 1):
             points = [
                 (bx + side * w * 0.45, by - h * 0.18),  # outer base (hidden in the head)
                 (bx + side * w * 0.33, by - h * 0.70),  # tip
                 (bx + side * w * 0.08, by - h * 0.44),  # inner base (hidden in the head)
             ]
-            pygame.draw.polygon(surface, PET_BODY, points)
-            pygame.draw.polygon(surface, PET_OUTLINE, points, width=3)
+            pygame.draw.polygon(canvas, PET_BODY, points)
+            pygame.draw.polygon(canvas, PET_OUTLINE, points, width=3)
             mx = sum(p[0] for p in points) / 3
             my = sum(p[1] for p in points) / 3
             inner = [(x + (mx - x) * 0.45, y + (my - y) * 0.45) for x, y in points]
-            pygame.draw.polygon(surface, PET_INNER_EAR, inner)
+            pygame.draw.polygon(canvas, PET_INNER_EAR, inner)
 
-    def _draw_face(self, surface, mood, bx, by, w, h, t, s):
+    def _draw_face(self, canvas, pose, bx, by, w, h, t, s):
         eye_y = by - h * 0.08
-        blink = mood not in ("happy", "tired") and (t % 3.7) < 0.13
+        eyes = pose.eyes
+        if eyes in ("open", "sad") and (t % 3.7) < 0.13:
+            eyes = "closed"  # blink
 
         for side in (-1, 1):
-            blush = pygame.Rect(0, 0, 26 * s, 12 * s)
+            blush = pygame.Rect(0, 0, 26 * s * pose.blush, 12 * s * pose.blush)
             blush.center = (bx + side * w * 0.31, eye_y + 20 * s)
-            pygame.draw.ellipse(surface, PET_BLUSH, blush)
-            self._draw_eye(surface, mood, bx + side * w * 0.19, eye_y, side, blink, s)
+            pygame.draw.ellipse(canvas, PET_BLUSH, blush)
+            self._draw_eye(canvas, eyes, bx + side * w * 0.19, eye_y, side, pose.look, s)
 
-        self._draw_mouth(surface, mood, bx, eye_y + 22 * s, s)
+        mouth_y = eye_y + 22 * s
+        self._draw_mouth(canvas, pose.mouth, bx, mouth_y, s)
 
-        if mood == "tired":
-            for i in range(3):
-                phase = (t * 0.5 + i / 3) % 1
-                z = self.z_font.render("z", True, TEXT_SOFT)
-                z.set_alpha(round(255 * (1 - phase)))
-                surface.blit(z, z.get_rect(center=(bx + w * 0.42 + phase * 24 * s, by - h * 0.45 - phase * 46 * s)))
+        if pose.drool:
+            drool = pygame.Rect(0, 0, 6 * s, 9 * s)
+            drool.center = (bx + 8 * s, mouth_y + 12 * s)
+            pygame.draw.ellipse(canvas, PET_DROOL, drool)
+        if 0 <= pose.tear <= 1:
+            size = 7 * s * (1 - pose.tear * 0.4)
+            tear = pygame.Rect(0, 0, size, size * 1.4)
+            tear.center = (bx - w * 0.21, eye_y + 12 * s + pose.tear * 34 * s)
+            pygame.draw.ellipse(canvas, PET_DROOL, tear)
+        if pose.food > 0:
+            self._draw_cookie(canvas, bx + 24 * s, mouth_y + 8 * s, pose.food, s)
 
-    def _draw_eye(self, surface, mood, ex, ey, side, blink, s):
-        if mood == "happy":
+    def _draw_eye(self, canvas, eyes, ex, ey, side, look, s):
+        if eyes == "happy":
             # Closed, smiling eyes: ^ ^
-            draw_curve(surface, PET_FEATURE, (ex, ey + 4 * s), (10 * s, 9 * s), math.pi, 2 * math.pi, 4 * s)
-        elif mood == "tired" or blink:
-            y = ey + (3 * s if mood == "tired" else 0)
-            pygame.draw.line(surface, PET_FEATURE, (ex - 10 * s, y), (ex + 10 * s, y), max(2, round(4 * s)))
+            draw_curve(canvas, PET_FEATURE, (ex, ey + 4 * s), (10 * s, 9 * s), math.pi, 2 * math.pi, 4 * s)
+        elif eyes == "closed":
+            pygame.draw.line(canvas, PET_FEATURE, (ex - 10 * s, ey + 2 * s), (ex + 10 * s, ey + 2 * s),
+                             max(2, round(4 * s)))
         else:
+            ex += look * 4 * s
             eye = pygame.Rect(0, 0, 16 * s, 22 * s)
             eye.center = (ex, ey)
-            pygame.draw.ellipse(surface, PET_FEATURE, eye)
-            pygame.draw.circle(surface, WHITE, (ex + 3 * s, ey - 5 * s), 3.5 * s)
-            if mood == "sad":
+            pygame.draw.ellipse(canvas, PET_FEATURE, eye)
+            pygame.draw.circle(canvas, WHITE, (ex + 3 * s, ey - 5 * s), 3.5 * s)
+            if eyes == "sad":
                 # Brows tilt up toward the middle of the face.
-                pygame.draw.line(surface, PET_FEATURE, (ex + side * 12 * s, ey - 16 * s),
+                pygame.draw.line(canvas, PET_FEATURE, (ex + side * 12 * s, ey - 16 * s),
                                  (ex - side * 6 * s, ey - 22 * s), max(2, round(3 * s)))
 
-    def _draw_mouth(self, surface, mood, mx, my, s):
-        if mood == "happy":
-            points = [(mx + 13 * s * math.cos(a), my - 2 * s + 12 * s * math.sin(a))
+    def _draw_mouth(self, canvas, mouth, mx, my, s):
+        if mouth in ("smile", "chomp"):
+            depth = 12 if mouth == "smile" else 17
+            points = [(mx + 13 * s * math.cos(a), my - 2 * s + depth * s * math.sin(a))
                       for a in (math.pi * i / 16 for i in range(17))]
-            pygame.draw.polygon(surface, PET_MOUTH, points)
+            pygame.draw.polygon(canvas, PET_MOUTH, points)
             tongue = pygame.Rect(0, 0, 12 * s, 6 * s)
-            tongue.center = (mx, my + 5 * s)
-            pygame.draw.ellipse(surface, PET_TONGUE, tongue)
-        elif mood == "hungry":
-            mouth = pygame.Rect(0, 0, 14 * s, 16 * s)
-            mouth.center = (mx, my + 2 * s)
-            pygame.draw.ellipse(surface, PET_MOUTH, mouth)
-            drool = pygame.Rect(0, 0, 6 * s, 9 * s)
-            drool.center = (mx + 8 * s, my + 12 * s)
-            pygame.draw.ellipse(surface, PET_DROOL, drool)
-        elif mood == "sad":
-            draw_curve(surface, PET_FEATURE, (mx, my + 7 * s), (9 * s, 6 * s), math.pi, 2 * math.pi, 3 * s)
-        elif mood == "tired":
-            draw_curve(surface, PET_FEATURE, (mx, my), (5 * s, 3 * s), 0, math.pi, 3 * s)
+            tongue.center = (mx, my + (depth - 7) * s)
+            pygame.draw.ellipse(canvas, PET_TONGUE, tongue)
+        elif mouth == "open":
+            hole = pygame.Rect(0, 0, 14 * s, 16 * s)
+            hole.center = (mx, my + 2 * s)
+            pygame.draw.ellipse(canvas, PET_MOUTH, hole)
+        elif mouth == "frown":
+            draw_curve(canvas, PET_FEATURE, (mx, my + 7 * s), (9 * s, 6 * s), math.pi, 2 * math.pi, 3 * s)
+        elif mouth == "small":
+            draw_curve(canvas, PET_FEATURE, (mx, my), (5 * s, 3 * s), 0, math.pi, 3 * s)
         else:
-            # Content: a little "w" cat mouth.
+            # "w": a little cat mouth.
             for dx in (-6, 6):
-                draw_curve(surface, PET_FEATURE, (mx + dx * s, my), (6 * s, 5 * s), 0, math.pi, 3 * s)
+                draw_curve(canvas, PET_FEATURE, (mx + dx * s, my), (6 * s, 5 * s), 0, math.pi, 3 * s)
+
+    def _draw_cookie(self, canvas, x, y, amount, s):
+        r = 15 * s * math.sqrt(amount)
+        if r < 2:
+            return
+        pygame.draw.circle(canvas, COOKIE_DARK, (x, y), r + 2)
+        pygame.draw.circle(canvas, COOKIE, (x, y), r)
+        for ox, oy in ((-0.4, -0.3), (0.35, -0.1), (-0.05, 0.4)):
+            pygame.draw.circle(canvas, COOKIE_CHIP, (x + ox * r, y + oy * r), max(1.0, r * 0.16))
