@@ -26,8 +26,6 @@ GOLD = (255, 206, 92)
 FEED_COLOR = (255, 158, 112)
 PLAY_COLOR = (132, 164, 248)
 
-PET_BODY = (255, 230, 200)
-PET_BELLY = (255, 243, 226)
 PET_OUTLINE = (112, 84, 96)
 PET_INNER_EAR = (255, 182, 196)
 PET_BLUSH = (255, 190, 200)
@@ -189,12 +187,13 @@ def draw_panel(surface, rect, radius=18):
 
 
 def draw_pill(surface, font, text, color, topright):
-    """A small rounded badge, e.g. the level indicator."""
+    """A small rounded badge, e.g. the level indicator. Returns where it was drawn."""
     label = font.render(text, True, WHITE)
     rect = label.get_rect().inflate(26, 10)
     rect.topright = topright
     pygame.draw.rect(surface, color, rect, border_radius=rect.height // 2)
     surface.blit(label, label.get_rect(center=rect.center))
+    return rect
 
 
 def draw_stat(surface, font, pos, width, label, fraction, value_text, color):
@@ -328,13 +327,45 @@ def action_pose(action, p):
     return Pose()
 
 
+
+
+# What each kind of pet looks like. Colours are (red, green, blue).
+SPECIES_LOOKS = {
+    # A fluffy tan pup: floppy dark-tipped ears, topknot, cream muzzle, wagging tail.
+    "dog": {
+        "body": (232, 196, 150), "belly": (248, 236, 214), "outline": PET_OUTLINE,
+        "ears": "floppy", "ear_tip": (104, 76, 60), "fluff": True,
+        "muzzle": (240, 222, 198), "nose": (48, 38, 40), "nose_shape": "button",
+        "tail": "fluffy", "blush_x": 0.26, "mouth_drop": 5,
+    },
+    # A soft gray cat: pointy ears, forehead stripes, pink nose, whiskers, curvy tail.
+    "cat": {
+        "body": (182, 184, 196), "belly": (226, 227, 234), "outline": (92, 86, 104),
+        "ears": "pointy", "inner_ear": PET_INNER_EAR, "stripes": (142, 144, 160),
+        "nose": (240, 150, 170), "nose_shape": "triangle", "whiskers": (118, 116, 132),
+        "tail": "thin", "blush_x": 0.31, "mouth_drop": 0,
+    },
+    # A white bunny: tall ears, pink nose, little teeth, cotton tail.
+    "bunny": {
+        "body": (250, 246, 240), "belly": WHITE, "outline": PET_OUTLINE,
+        "ears": "long", "inner_ear": PET_INNER_EAR,
+        "nose": (244, 150, 170), "nose_shape": "oval", "teeth": True,
+        "tail": "puff", "blush_x": 0.31, "mouth_drop": 3,
+    },
+}
+
+
+def species_look(species):
+    return SPECIES_LOOKS.get(species, SPECIES_LOOKS["dog"])
+
+
 class PetRenderer:
-    """Draws the placeholder pet using simple shapes.
+    """Draws the pet using simple shapes.
 
     Want custom pixel art later? Replace `draw` with code that picks an image
-    from assets/sprites based on `mood`, `action` and `stage`, and blits it
-    standing at `ground`. The rest of the game only calls `draw(...)` and
-    `contains(...)`, so nothing else needs to change.
+    from assets/sprites based on `species`, `mood`, `action` and `stage`, and
+    blits it standing at `ground`. The rest of the game only calls `draw(...)`
+    and `contains(...)`, so nothing else needs to change.
     """
 
     BODY_W = 190
@@ -343,7 +374,8 @@ class PetRenderer:
     def __init__(self, z_font):
         self.z_font = z_font
 
-    def draw(self, surface, mood, ground, t, stage=0, action=None, progress=0.0, zoom=1.0, shadow=True):
+    def draw(self, surface, mood, ground, t, stage=0, action=None, progress=0.0, zoom=1.0,
+             shadow=True, species="dog"):
         """Draw the pet with its feet at `ground` (x, y).
 
         `zoom` shrinks or grows the whole pet (the companion window uses a small
@@ -351,6 +383,7 @@ class PetRenderer:
         """
         pose = action_pose(action, progress) if action else idle_pose(mood, t)
         look = stage_look(stage)
+        kind = species_look(species)
         s = look["scale"] * zoom
         cx, ground_y = ground
         w = self.BODY_W * s * pose.sx
@@ -365,9 +398,10 @@ class PetRenderer:
             pygame.draw.ellipse(surface, GROUND_SHADOW, shade)
 
         # Draw the pet on its own transparent canvas so the whole thing can rotate.
-        size = round(300 * s)
+        # (Tall enough for bunny ears and a crown.)
+        size = round(380 * s)
         canvas = pygame.Surface((size, size), pygame.SRCALPHA)
-        self._draw_pet(canvas, pose, look, size / 2, size / 2, w, h, t, s)
+        self._draw_pet(canvas, pose, look, kind, size / 2, size / 2, w, h, t, s)
         if pose.angle:
             canvas = pygame.transform.rotozoom(canvas, pose.angle, 1.0)
 
@@ -399,45 +433,123 @@ class PetRenderer:
 
     # ---- Body parts ----
 
-    def _draw_pet(self, canvas, pose, look, bx, by, w, h, t, s):
-        self._draw_ears(canvas, bx, by, w, h)
+    def _draw_pet(self, canvas, pose, look, kind, bx, by, w, h, t, s):
+        outline, body_color = kind["outline"], kind["body"]
+
+        # Things behind the head first; the body is drawn over their bases.
+        self._draw_tail(canvas, kind, pose, bx, by, w, h, t, s)
+        if kind["ears"] == "pointy":
+            self._draw_pointy_ears(canvas, kind, bx, by, w, h)
+        elif kind["ears"] == "long":
+            self._draw_long_ears(canvas, kind, bx, by, w, h)
+        if kind.get("fluff"):
+            self._draw_topknot(canvas, kind, bx, by, w, h, s)
 
         body = pygame.Rect(0, 0, w, h)
         body.center = (bx, by)
-        pygame.draw.ellipse(canvas, PET_OUTLINE, body.inflate(6, 6))
-        pygame.draw.ellipse(canvas, PET_BODY, body)
+        pygame.draw.ellipse(canvas, outline, body.inflate(6, 6))
+        pygame.draw.ellipse(canvas, body_color, body)
 
         belly = pygame.Rect(0, 0, w * 0.5, h * 0.34)
         belly.center = (bx, by + h * 0.24)
-        pygame.draw.ellipse(canvas, PET_BELLY, belly)
+        pygame.draw.ellipse(canvas, kind["belly"], belly)
 
         for side in (-1, 1):
             paw = pygame.Rect(0, 0, 40 * s, 20 * s)
             paw.center = (bx + side * w * 0.22, by + h * 0.44)
-            pygame.draw.ellipse(canvas, PET_OUTLINE, paw.inflate(6, 6))
-            pygame.draw.ellipse(canvas, PET_BODY, paw)
+            pygame.draw.ellipse(canvas, outline, paw.inflate(6, 6))
+            pygame.draw.ellipse(canvas, body_color, paw)
 
         if look.get("bell"):
-            self._draw_bell_collar(canvas, bx, by, w, h, s)
-        self._draw_face(canvas, pose, bx, by, w, h, t, s)
+            self._draw_bell_collar(canvas, outline, bx, by, w, h, s)
+        if kind["ears"] == "floppy":
+            self._draw_floppy_ears(canvas, kind, bx, by, w, h)
+        if kind.get("stripes"):
+            for offset in (-0.07, 0, 0.07):
+                x = bx + w * offset
+                pygame.draw.line(canvas, kind["stripes"], (x, by - h * 0.42), (x, by - h * 0.32),
+                                 max(2, round(4 * s)))
+        self._draw_face(canvas, pose, kind, bx, by, w, h, t, s)
         if look.get("crown"):
             self._draw_crown(canvas, bx, by - h * 0.47, s)
         if look.get("bow"):
-            self._draw_bow(canvas, bx + w * 0.30, by - h * 0.43, s)
+            self._draw_bow(canvas, outline, bx + w * 0.30, by - h * 0.43, s)
+
+    def _draw_pointy_ears(self, canvas, kind, bx, by, w, h):
+        for side in (-1, 1):
+            points = [
+                (bx + side * w * 0.45, by - h * 0.18),  # outer base (hidden in the head)
+                (bx + side * w * 0.33, by - h * 0.70),  # tip
+                (bx + side * w * 0.08, by - h * 0.44),  # inner base (hidden in the head)
+            ]
+            pygame.draw.polygon(canvas, kind["body"], points)
+            pygame.draw.polygon(canvas, kind["outline"], points, width=3)
+            mx = sum(p[0] for p in points) / 3
+            my = sum(p[1] for p in points) / 3
+            inner = [(x + (mx - x) * 0.45, y + (my - y) * 0.45) for x, y in points]
+            pygame.draw.polygon(canvas, kind["inner_ear"], inner)
+
+    def _draw_long_ears(self, canvas, kind, bx, by, w, h):
+        for side in (-1, 1):
+            ear = pygame.Rect(0, 0, w * 0.2, h * 0.72)
+            ear.center = (bx + side * w * 0.18, by - h * 0.64)
+            pygame.draw.ellipse(canvas, kind["outline"], ear.inflate(6, 6))
+            pygame.draw.ellipse(canvas, kind["body"], ear)
+            inner = pygame.Rect(0, 0, w * 0.09, h * 0.5)
+            inner.center = (ear.centerx, ear.centery - h * 0.02)
+            pygame.draw.ellipse(canvas, kind["inner_ear"], inner)
+
+    def _draw_floppy_ears(self, canvas, kind, bx, by, w, h):
+        """Long, fluffy ears hanging down the sides of the head, darker at the tips."""
+        for side in (-1, 1):
+            ear = pygame.Rect(0, 0, w * 0.2, h * 0.5)
+            ear.center = (bx + side * w * 0.43, by - h * 0.02)
+            pygame.draw.ellipse(canvas, kind["outline"], ear.inflate(6, 6))
+            pygame.draw.ellipse(canvas, kind["ear_tip"], ear)
+            upper = pygame.Rect(ear.x, ear.y, ear.width, h * 0.38)
+            pygame.draw.ellipse(canvas, kind["body"], upper)
+
+    def _draw_topknot(self, canvas, kind, bx, by, w, h, s):
+        """A few fluffy tufts on top of the head."""
+        tufts = [(-0.2, 0.43, 0.085), (-0.07, 0.48, 0.1), (0.07, 0.48, 0.1), (0.2, 0.43, 0.085)]
+        for ox, oy, r in tufts:
+            pygame.draw.circle(canvas, kind["outline"], (bx + w * ox, by - h * oy), w * r + 3)
+        for ox, oy, r in tufts:
+            pygame.draw.circle(canvas, kind["body"], (bx + w * ox, by - h * oy), w * r)
+
+    def _draw_tail(self, canvas, kind, pose, bx, by, w, h, t, s):
+        happy = pose.eyes == "happy"
+        wag = math.sin(t * (14 if happy else 3)) * (1.0 if happy else 0.3)
+        outline, color = kind["outline"], kind["body"]
+        if kind["tail"] == "fluffy":
+            puffs = [(0.43, 0.22, 0.075), (0.52, 0.08, 0.085), (0.56 + 0.04 * wag, -0.08, 0.075)]
+            for ox, oy, r in puffs:
+                pygame.draw.circle(canvas, outline, (bx + w * ox, by + h * oy), w * r + 3)
+            for ox, oy, r in puffs:
+                pygame.draw.circle(canvas, color, (bx + w * ox, by + h * oy), w * r)
+        elif kind["tail"] == "thin":
+            center = (bx + w * (0.46 + 0.03 * wag), by + h * 0.04)
+            radii = (w * 0.13, h * 0.32)
+            draw_curve(canvas, outline, center, radii, -math.pi * 0.45, math.pi * 0.5, 15 * s)
+            draw_curve(canvas, color, center, radii, -math.pi * 0.45, math.pi * 0.5, 9 * s)
+        elif kind["tail"] == "puff":
+            center = (bx + w * 0.47, by + h * 0.26)
+            pygame.draw.circle(canvas, outline, center, w * 0.09 + 3)
+            pygame.draw.circle(canvas, WHITE, center, w * 0.09)
 
     # ---- Accessories (unlocked by evolving) ----
 
-    def _draw_bow(self, canvas, x, y, s):
+    def _draw_bow(self, canvas, outline, x, y, s):
         for side in (-1, 1):
             loop = [(x, y), (x + side * 16 * s, y - 10 * s), (x + side * 16 * s, y + 10 * s)]
             pygame.draw.polygon(canvas, BOW, loop)
-            pygame.draw.polygon(canvas, PET_OUTLINE, loop, width=2)
-        pygame.draw.circle(canvas, PET_OUTLINE, (x, y), 6 * s)
+            pygame.draw.polygon(canvas, outline, loop, width=2)
+        pygame.draw.circle(canvas, outline, (x, y), 6 * s)
         pygame.draw.circle(canvas, BOW, (x, y), 4.5 * s)
 
-    def _draw_bell_collar(self, canvas, bx, by, w, h, s):
+    def _draw_bell_collar(self, canvas, outline, bx, by, w, h, s):
         center, radii = (bx, by + h * 0.02), (w * 0.27, h * 0.2)
-        draw_curve(canvas, PET_OUTLINE, center, radii, math.pi * 0.2, math.pi * 0.8, 10 * s)
+        draw_curve(canvas, outline, center, radii, math.pi * 0.2, math.pi * 0.8, 10 * s)
         draw_curve(canvas, COLLAR, center, radii, math.pi * 0.2, math.pi * 0.8, 7 * s)
         bell = (bx, by + h * 0.22 + 6 * s)
         pygame.draw.circle(canvas, GOLD_DARK, bell, 9 * s)
@@ -455,34 +567,41 @@ class PetRenderer:
         for side in (-1, 1):
             pygame.draw.circle(canvas, HAPPY_COLOR, (x + side * half * 0.62, base_y - tall * 0.22), 3 * s)
 
-    def _draw_ears(self, canvas, bx, by, w, h):
-        for side in (-1, 1):
-            points = [
-                (bx + side * w * 0.45, by - h * 0.18),  # outer base (hidden in the head)
-                (bx + side * w * 0.33, by - h * 0.70),  # tip
-                (bx + side * w * 0.08, by - h * 0.44),  # inner base (hidden in the head)
-            ]
-            pygame.draw.polygon(canvas, PET_BODY, points)
-            pygame.draw.polygon(canvas, PET_OUTLINE, points, width=3)
-            mx = sum(p[0] for p in points) / 3
-            my = sum(p[1] for p in points) / 3
-            inner = [(x + (mx - x) * 0.45, y + (my - y) * 0.45) for x, y in points]
-            pygame.draw.polygon(canvas, PET_INNER_EAR, inner)
+    # ---- Face ----
 
-    def _draw_face(self, canvas, pose, bx, by, w, h, t, s):
+    def _draw_face(self, canvas, pose, kind, bx, by, w, h, t, s):
         eye_y = by - h * 0.08
+        mouth_y = eye_y + (22 + kind["mouth_drop"]) * s
         eyes = pose.eyes
         if eyes in ("open", "sad") and (t % 3.7) < 0.13:
             eyes = "closed"  # blink
 
+        if kind.get("muzzle"):
+            muzzle = pygame.Rect(0, 0, w * 0.32, h * 0.26)
+            muzzle.center = (bx, eye_y + 24 * s)
+            pygame.draw.ellipse(canvas, kind["muzzle"], muzzle)
+
         for side in (-1, 1):
             blush = pygame.Rect(0, 0, 26 * s * pose.blush, 12 * s * pose.blush)
-            blush.center = (bx + side * w * 0.31, eye_y + 20 * s)
+            blush.center = (bx + side * w * kind["blush_x"], eye_y + 20 * s)
             pygame.draw.ellipse(canvas, PET_BLUSH, blush)
             self._draw_eye(canvas, eyes, bx + side * w * 0.19, eye_y, side, pose.look, s)
 
-        mouth_y = eye_y + 22 * s
         self._draw_mouth(canvas, pose.mouth, bx, mouth_y, s)
+        if kind.get("teeth") and pose.mouth in ("w", "smile"):
+            top = mouth_y + (3 if pose.mouth == "w" else -2) * s
+            teeth = pygame.Rect(bx - 4 * s, top, 8 * s, 6 * s)
+            pygame.draw.rect(canvas, WHITE, teeth, border_radius=max(1, round(s)))
+            pygame.draw.rect(canvas, kind["outline"], teeth, width=1, border_radius=max(1, round(s)))
+            pygame.draw.line(canvas, kind["outline"], (bx, top), (bx, top + 6 * s), 1)
+        self._draw_nose(canvas, kind, bx, eye_y + 13 * s, s)
+
+        if kind.get("whiskers"):
+            for side in (-1, 1):
+                start = (bx + side * w * 0.22, mouth_y - 2 * s)
+                for lift in (-7, 2):
+                    pygame.draw.line(canvas, kind["whiskers"], start,
+                                     (bx + side * w * 0.43, mouth_y + lift * s), max(1, round(2 * s)))
 
         if pose.drool:
             drool = pygame.Rect(0, 0, 6 * s, 9 * s)
@@ -495,6 +614,20 @@ class PetRenderer:
             pygame.draw.ellipse(canvas, PET_DROOL, tear)
         if pose.food > 0:
             self._draw_cookie(canvas, bx + 24 * s, mouth_y + 8 * s, pose.food, s)
+
+    def _draw_nose(self, canvas, kind, x, y, s):
+        shape, color = kind["nose_shape"], kind["nose"]
+        if shape == "button":  # a shiny dog nose
+            nose = pygame.Rect(0, 0, 18 * s, 12 * s)
+            nose.center = (x, y)
+            pygame.draw.ellipse(canvas, color, nose)
+            pygame.draw.ellipse(canvas, WHITE, (x - 5 * s, y - 4 * s, 5 * s, 3 * s))
+        elif shape == "triangle":  # a little cat nose
+            pygame.draw.polygon(canvas, color, [(x - 5 * s, y - 2 * s), (x + 5 * s, y - 2 * s), (x, y + 3 * s)])
+        else:
+            nose = pygame.Rect(0, 0, 10 * s, 7 * s)
+            nose.center = (x, y)
+            pygame.draw.ellipse(canvas, color, nose)
 
     def _draw_eye(self, canvas, eyes, ex, ey, side, look, s):
         if eyes == "happy":
@@ -532,7 +665,7 @@ class PetRenderer:
         elif mouth == "small":
             draw_curve(canvas, PET_FEATURE, (mx, my), (5 * s, 3 * s), 0, math.pi, 3 * s)
         else:
-            # "w": a little cat mouth.
+            # "w": a little animal mouth.
             for dx in (-6, 6):
                 draw_curve(canvas, PET_FEATURE, (mx + dx * s, my), (6 * s, 5 * s), 0, math.pi, 3 * s)
 

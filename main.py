@@ -98,8 +98,8 @@ class App:
             self.show(CompanionScreen(self, pet, greeting=pet.say("companion_on")))
         self.save()
 
-    def start_game(self, name):
-        pet = Pet(name)
+    def start_game(self, name, species=None):
+        pet = Pet(name, species=species)
         self.show(GameScreen(self, pet, greeting=f"Hi! I'm {pet.name}!"))
         self.save()
 

@@ -11,8 +11,8 @@ import pygame
 
 import effects
 import ui
-from messages import format_duration
-from pet import DEFAULT_NAME, MAX_NAME_LENGTH
+from messages import SPECIES, SPECIES_NAMES, format_duration
+from pet import DEFAULT_NAME, DEFAULT_SPECIES, MAX_NAME_LENGTH
 
 WIDTH, HEIGHT = 460, 640
 MESSAGE_SECONDS = 3.0
@@ -24,23 +24,50 @@ AWAY_NOTE_SECONDS = 6.0
 ANIMATIONS = {"fed": "eating", "played": "playing", "petted": "petted"}
 
 
+CARD_SIZE = (128, 200)
+CARD_GAP = 12
+CARD_TOP = 108
+
+
 class NameScreen:
-    """First screen: the player types a name for their new pet."""
+    """First screen: the player picks a kind of pet and types its name."""
 
     def __init__(self, app, notice=None):
         self.app = app
         self.notice = notice  # e.g. a warning that the old save couldn't be read
         self.text = ""
         self.time = 0.0
+        self.species = DEFAULT_SPECIES
+        total = len(SPECIES) * CARD_SIZE[0] + (len(SPECIES) - 1) * CARD_GAP
+        left = (WIDTH - total) // 2
+        self.cards = {kind: pygame.Rect(left + i * (CARD_SIZE[0] + CARD_GAP), CARD_TOP, *CARD_SIZE)
+                      for i, kind in enumerate(SPECIES)}
+        self.hovered_card = None
         self.input_rect = pygame.Rect(60, 396, WIDTH - 120, 50)
         self.start_button = ui.Button((WIDTH // 2 - 100, 474, 200, 54), "Start", ui.PLAY_COLOR, app.fonts.button)
         pygame.key.start_text_input()
+
+    def card_at(self, pos):
+        for kind, rect in self.cards.items():
+            if rect.collidepoint(pos):
+                return kind
+        return None
+
+    def choose(self, kind):
+        if kind != self.species:
+            self.species = kind
+            self.app.sounds.play("click")
 
     def handle_event(self, event):
         if self.start_button.handle_event(event):
             self.confirm()
         elif event.type == pygame.MOUSEMOTION:
-            ui.set_hand_cursor(self.start_button.hovered)
+            self.hovered_card = self.card_at(event.pos)
+            ui.set_hand_cursor(self.start_button.hovered or self.hovered_card is not None)
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            kind = self.card_at(event.pos)
+            if kind:
+                self.choose(kind)
         elif event.type == pygame.TEXTINPUT:
             if event.text.isprintable():
                 self.text = (self.text + event.text)[:MAX_NAME_LENGTH]
@@ -49,12 +76,32 @@ class NameScreen:
                 self.text = self.text[:-1]
             elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                 self.confirm()
+            elif event.key in (pygame.K_LEFT, pygame.K_RIGHT):
+                step = 1 if event.key == pygame.K_RIGHT else -1
+                index = (SPECIES.index(self.species) + step) % len(SPECIES)
+                self.choose(SPECIES[index])
 
     def confirm(self):
         pygame.key.stop_text_input()
         ui.set_hand_cursor(False)
         self.app.sounds.play("click")
-        self.app.start_game(self.text)
+        self.app.start_game(self.text, self.species)
+
+    def draw_cards(self, surface):
+        fonts = self.app.fonts
+        for kind, rect in self.cards.items():
+            selected = kind == self.species
+            card = rect.move(0, -4 if selected else 0)  # the chosen card lifts a little
+            ui.draw_panel(surface, card, radius=16)
+            if selected:
+                pygame.draw.rect(surface, ui.XP_COLOR, card, width=3, border_radius=16)
+            elif kind == self.hovered_card:
+                pygame.draw.rect(surface, ui.PANEL_SHADOW, card, width=2, border_radius=16)
+            mood = "happy" if selected else "content"
+            self.app.pet_renderer.draw(surface, mood, (card.centerx, card.bottom - 46), self.time,
+                                       zoom=0.66, species=kind)
+            label = fonts.badge.render(SPECIES_NAMES[kind], True, ui.XP_COLOR if selected else ui.TEXT_SOFT)
+            surface.blit(label, label.get_rect(midbottom=(card.centerx, card.bottom - 10)))
 
     def update(self, dt):
         self.time += dt
@@ -70,10 +117,10 @@ class NameScreen:
                 img = fonts.small.render(line, True, ui.COLLAR)
                 surface.blit(img, img.get_rect(midtop=(WIDTH // 2, 74 + i * fonts.small.get_linesize())))
         else:
-            subtitle = fonts.small.render("Give them a name to get started.", True, ui.TEXT_SOFT)
+            subtitle = fonts.small.render("Choose a pet and give them a name.", True, ui.TEXT_SOFT)
             surface.blit(subtitle, subtitle.get_rect(midtop=(WIDTH // 2, 76)))
 
-        self.app.pet_renderer.draw(surface, "happy", (WIDTH // 2, 325), self.time)
+        self.draw_cards(surface)
 
         label = fonts.body.render("Pet name", True, ui.TEXT)
         surface.blit(label, label.get_rect(midbottom=(WIDTH // 2, self.input_rect.top - 6)))
@@ -266,7 +313,7 @@ class PetScreen:
         progress = self.action_time / ui.ACTION_DURATIONS[self.action] if self.action else 0.0
         self.app.pet_renderer.draw(surface, self.pet.mood, self.PET_GROUND, self.time, stage=self.pet.stage,
                                    action=self.action, progress=min(1.0, progress),
-                                   zoom=self.ZOOM, shadow=shadow)
+                                   zoom=self.ZOOM, shadow=shadow, species=self.pet.species)
 
 
 class GameScreen(PetScreen):
@@ -340,13 +387,18 @@ class GameScreen(PetScreen):
         pet = self.pet
         surface.blit(self.app.background, (0, 0))
 
-        # Header: name, personality and stage, level, buttons and XP
+        # Header: name, a tag like "Shy dog · Junior", level, buttons and XP
         name_img = fonts.title.render(pet.name, True, ui.TEXT)
         name_rect = surface.blit(name_img, (24, 16))
-        tag = fonts.small.render(f"{pet.personality.capitalize()} · {pet.stage_name}", True, ui.TEXT_SOFT)
-        surface.blit(tag, tag.get_rect(bottomleft=(name_rect.right + 10, name_rect.bottom - 6)))
-        ui.draw_pill(surface, fonts.badge, f"Lv {pet.level}", ui.XP_COLOR,
-                     topright=(self.companion_button.rect.left - 8, 24))
+        pill_rect = ui.draw_pill(surface, fonts.badge, f"Lv {pet.level}", ui.XP_COLOR,
+                                 topright=(self.companion_button.rect.left - 8, 24))
+        room = pill_rect.left - 10 - (name_rect.right + 10)
+        for text in (f"{pet.personality.capitalize()} {pet.species_name.lower()} · {pet.stage_name}",
+                     f"{pet.species_name} · {pet.stage_name}", pet.stage_name):
+            tag = fonts.small.render(text, True, ui.TEXT_SOFT)
+            if tag.get_width() <= room:  # use the longest version that fits
+                surface.blit(tag, tag.get_rect(bottomleft=(name_rect.right + 10, name_rect.bottom - 6)))
+                break
         self.sound_button.icon = "muted" if self.app.sounds.muted else "sound"
         self.sound_button.draw(surface)
         self.companion_button.draw(surface)
