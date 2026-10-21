@@ -26,7 +26,7 @@ When you want it nearby while you work, switch to **companion mode**: the pet ho
 - A wardrobe with 15 hats, glasses, neckwear and outfits in 7 colours, with more unlocking as your pet levels up
 - Automatic saving, with time passing (gently) while the game is closed
 - Damaged save files are backed up instead of crashing the game
-- Desktop companion mode: a small, always-on-top pet with a see-through background that walks along your taskbar (or stays put when you tell it to)
+- Desktop companion mode: a small, always-on-top pet with a see-through background that walks, runs, naps, looks around and barks at your cursor (or stays put, or turns into a click-through ghost, when you tell it to)
 
 ## Requirements
 
@@ -76,16 +76,18 @@ Over time your pet slowly gets hungrier and less happy, and recovers energy by r
 
 Click the paw button (or press `C`) and the pet moves out onto your desktop: a small window with no border, always on top, where only the pet and its speech bubble are visible.
 
-- **Walking:** the pet strolls along the top of your taskbar on its own, facing the way it walks, with long rests in between so it isn't distracting. Happy pets walk more and faster; hungry or sad ones dawdle; tired ones stay put. It stops while your mouse is over it.
-- **Stay / Walk:** choose **Stay here** in the right-click menu (or press `S`) and the pet sits in one spot until you choose **Walk around** again.
+- **A life of its own:** every so often the pet picks something to do: **walk** or **run** along the top of your taskbar (facing the way it goes), **sit**, **lie down**, **look around**, or do a **curious head tilt** with a "?". Its mood decides what it prefers: happy pets run and play more, sad ones lie down more, and tired ones only sit or lie down (with floating Zs). It always does something calm after a walk or run, so it isn't distracting, and it pauses while your mouse is over it.
+- **Notices your cursor:** when your mouse comes close, the pet turns to watch it, and sometimes barks with a "!" (the cat meows, the bunny thumps), with a sound. It won't do this more than once every 20 seconds.
+- **Stay / Walk:** choose **Stay here** in the right-click menu (or press `S`) and the pet stays in one spot: it still sits, lies down, looks around, tilts its head and notices your cursor, but never walks or runs off. Choose **Walk around** to let it roam again.
+- **Ghost mode:** choose **Ghost mode** in the right-click menu (or press `G`) and the pet fades a little and lets *every* click pass straight through it, so it can never get in your way. It keeps doing its thing, but doesn't bark. To reach it again, **hold `Ctrl` and point at the pet**: it turns solid and clickable while you hold `Ctrl`, so you can drag it, pet it, or right-click → **Leave ghost mode**. (Windows only.)
 - **Drag** the pet to move it anywhere on screen. With walking on, it drops back down to the taskbar when you let go. In Stay mode it stays where you put it, and snaps neatly against the taskbar or the side of the screen if you drop it close to one.
 - **Click** it to give it a pat.
 - **Hover** over it to see its level, hunger, happiness and energy.
-- **Right-click** it for a menu: Feed, Play, Sound on/off, Stay here / Walk around, Wardrobe, Big window, Hide, Quit.
-- `F`, `P`, `M`, `S`, `C` and `W` work too, after clicking the pet so its window has focus.
+- **Right-click** it for a menu: Feed, Play, Sound on/off, Stay here / Walk around, Ghost mode, Wardrobe, Big window, Hide, Quit.
+- `F`, `P`, `M`, `S`, `G`, `C` and `W` work too, after clicking the pet so its window has focus.
 - **Hide** minimizes it; click its taskbar button to bring it back.
 
-Clicks on the see-through area go straight through to whatever is behind, so the pet never gets in the way. The game remembers whether you were in companion mode, whether the pet was walking or staying, and where you left it. If that spot is no longer on screen (say, after unplugging a monitor), it goes back to the bottom-right corner.
+Clicks on the see-through area go straight through to whatever is behind, so the pet never gets in the way. The game remembers whether you were in companion mode, whether the pet was walking or staying, whether it was a ghost, and where you left it. If that spot is no longer on screen (say, after unplugging a monitor), it goes back to the bottom-right corner.
 
 Walking and snapping use your main screen. On Windows the game asks where the taskbar is; elsewhere it assumes a 48-pixel taskbar at the bottom.
 
@@ -138,7 +140,7 @@ To start over with a new pet, close the game and delete `save.json`.
 
 ### Custom sounds
 
-The sound effects are generated in code. To use your own, put a `.wav` or `.ogg` file in `assets/sounds/` named after the effect: `fed`, `played`, `petted`, `refuse`, `level_up`, `evolve` or `click` (for example `assets/sounds/level_up.wav`).
+The sound effects are generated in code. To use your own, put a `.wav` or `.ogg` file in `assets/sounds/` named after the effect: `fed`, `played`, `petted`, `refuse`, `level_up`, `evolve`, `click`, `bark`, `meow` or `thump` (for example `assets/sounds/level_up.wav`).
 
 ## Running the tests
 
@@ -156,8 +158,8 @@ buchowchow/
 ├── companion.py         # Companion mode: the small desktop pet, dragging and its menu
 ├── wardrobe.py          # Wardrobe rules: items, slots, colours, unlocks, what the pet wears (no Pygame)
 ├── wardrobe_screen.py   # The Wardrobe screen
-├── desktop_window.py    # See-through window (Windows), finding the taskbar, snapping to edges
-├── wander.py            # When the companion walks, rests and turns around (no Pygame)
+├── desktop_window.py    # See-through window and ghost mode (Windows), finding the taskbar, snapping to edges
+├── wander.py            # What the companion does on its own: walk, run, sit, lie, look, tilt, bark (no Pygame)
 ├── pet.py               # Pet rules: stats, actions, XP, moods, personality, evolution (no Pygame)
 ├── save_manager.py      # Saving/loading save.json, offline time, damaged-file backups
 ├── messages.py          # Everything the pet can say, by situation, personality and species
@@ -191,4 +193,4 @@ Saves from before species existed load as a dog.
 - [x] Phase 3: Progression and saving
 - [x] Phase 4: Desktop companion mode
 
-Ideas for later: a focus timer where your pet cheers you on, napping when you're away from the computer, a click-through ghost mode, custom pixel-art sprites, and a packaged `.exe` so it runs without Python.
+Ideas for later: a focus timer where your pet cheers you on, napping when you're away from the computer, custom pixel-art sprites, and a packaged `.exe` so it runs without Python.
