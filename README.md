@@ -22,7 +22,8 @@ When you want it nearby while you work, switch to **companion mode**: the pet ho
 - Speech bubbles with random lines, plus the pet chatting on its own now and then
 - Sound effects, generated in code (no audio files needed), with a mute button
 - Visual effects: floating "+XP" text, sparkles, hearts, crumbs, and level-up and evolution bursts
-- Four evolution stages, each bigger and with a new accessory
+- Four evolution stages, each a bit bigger
+- A wardrobe with 15 hats, glasses, neckwear and outfits in 7 colours, with more unlocking as your pet levels up
 - Automatic saving, with time passing (gently) while the game is closed
 - Damaged save files are backed up instead of crashing the game
 - Desktop companion mode: a small, draggable, always-on-top pet with a see-through background
@@ -66,6 +67,7 @@ python main.py
 | Play | Play button or `P` | Happiness +20, energy -15, hunger +10. Refused if the pet is too tired. | +15 |
 | Pet | Click the pet | Happiness +3 (at most once every 4 seconds) | none |
 | Mute | Speaker button or `M` | Turns sound effects on or off | |
+| Wardrobe | Hanger button or `W` | Dress up your pet | |
 | Companion mode | Paw button or `C` | Switches between the full window and the desktop pet | |
 
 Over time your pet slowly gets hungrier and less happy, and recovers energy by resting.
@@ -77,24 +79,41 @@ Click the paw button (or press `C`) and the pet moves out onto your desktop: a s
 - **Drag** the pet to move it anywhere on screen.
 - **Click** it to give it a pat.
 - **Hover** over it to see its level, hunger, happiness and energy.
-- **Right-click** it for a menu: Feed, Play, Sound on/off, Big window, Hide, Quit.
-- `F`, `P`, `M` and `C` work too, after clicking the pet so its window has focus.
+- **Right-click** it for a menu: Feed, Play, Sound on/off, Wardrobe, Big window, Hide, Quit.
+- `F`, `P`, `M`, `C` and `W` work too, after clicking the pet so its window has focus.
 - **Hide** minimizes it; click its taskbar button to bring it back.
 
 Clicks on the see-through area go straight through to whatever is behind, so the pet never gets in the way. The game remembers whether you were in companion mode and where you left the pet. If that spot is no longer on screen (say, after unplugging a monitor), it goes back to the bottom-right corner.
 
 The see-through background uses a Windows feature (a "colour key": every pixel of one exact colour becomes invisible). On other systems, companion mode still works but has a plain background.
 
+### Wardrobe
+
+Click the hanger button (or press `W`) to dress up your pet. Pick a slot along the middle, click an item to put it on (or **None** to take it off), and choose a colour with the swatches at the bottom. Each card shows your pet wearing that item. Press **Done** (or `Esc`) to go back; the outfit is saved with your pet.
+
+| Slot | Items (unlock level) |
+|---|---|
+| Head | Bow (1), Flower (1), Party hat (2), Beanie (3), Crown (10) |
+| Face | Glasses (1), Sunglasses (4), Heart shades (6) |
+| Neck | Bell collar (1), Bandana (2), Bow tie (3), Scarf (5) |
+| Outfit | Sweater (1), T-shirt (2), Raincoat (4) |
+
+Everything except the crown and sunglasses comes in pink, red, orange, yellow, green, blue or purple. When a level up unlocks something new, a "New: ..." note pops up over your pet.
+
+To add an item, add it to `ITEMS` in `wardrobe.py` and give it a drawing function in `ui.ITEM_PAINTERS`.
+
 ### Evolution
 
-Your pet grows as it levels up. Each stage is a bit bigger and unlocks an accessory:
+Your pet grows as it levels up. Each stage is a bit bigger:
 
-| Stage | Level | Look |
-|---|---|---|
-| Baby | 1 | Small and round |
-| Junior | 3 | Adds a bow |
-| Adult | 6 | Full size, with a bell collar |
-| Royal | 10 | Wears a crown |
+| Stage | Level |
+|---|---|
+| Baby | 1 |
+| Junior | 3 |
+| Adult | 6 |
+| Royal | 10 |
+
+Pets saved before the wardrobe existed keep the accessories their stage used to give them (a bow, a bell collar, a crown), and you can change them freely.
 
 ### Saving
 
@@ -131,6 +150,8 @@ buchowchow/
 ├── main.py              # The App: window, main loop, switching screens and window modes
 ├── screens.py           # Name screen, shared PetScreen behaviour, and the full game screen
 ├── companion.py         # Companion mode: the small desktop pet, dragging and its menu
+├── wardrobe.py          # Wardrobe rules: items, slots, colours, unlocks, what the pet wears (no Pygame)
+├── wardrobe_screen.py   # The Wardrobe screen
 ├── desktop_window.py    # See-through window (Windows) and keeping the pet on screen
 ├── pet.py               # Pet rules: stats, actions, XP, moods, personality, evolution (no Pygame)
 ├── save_manager.py      # Saving/loading save.json, offline time, damaged-file backups
@@ -141,7 +162,7 @@ buchowchow/
 ├── assets/
 │   ├── sprites/         # Custom pet art (coming later)
 │   └── sounds/          # Optional custom sound effects
-├── tests/               # Tests for the pet rules, saving, messages, sounds and window placement
+├── tests/               # Tests for the pet rules, wardrobe, saving, messages, sounds and window placement
 ├── docs/screenshot.png
 ├── requirements.txt     # What you need to play
 ├── requirements-dev.txt # Extra tools for development (pytest)
