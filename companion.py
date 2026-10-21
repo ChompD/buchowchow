@@ -5,11 +5,14 @@
   (or meows, or thumps) when your cursor comes close.
 - "Stay here" (menu or S) keeps it in one spot: it still does everything except walk
   and run. "Walk around" lets it roam again.
+- Ghost mode (menu or G) fades the pet and lets every click pass through it.
+  Hold Ctrl and point at the pet to make it solid and clickable again.
 - Drag the pet to move it. While walking is on it drops back down to the taskbar;
   in Stay mode it stays where you put it, snapping to the taskbar or a screen side if close.
 - Click the pet to give it a pat. Hover over it to see its stats.
-- Right-click the pet for a menu (Feed, Play, Sound, Stay/Walk, Wardrobe, Big window, Hide, Quit).
-- Keyboard shortcuts F, P, M, S, C and W work while the pet's window is focused.
+- Right-click the pet for a menu (Feed, Play, Sound, Stay/Walk, Ghost mode, Wardrobe,
+  Big window, Hide, Quit).
+- Keyboard shortcuts F, P, M, S, G, C and W work while the pet's window is focused.
 """
 
 import pygame
@@ -53,6 +56,7 @@ class CompanionScreen(PetScreen):
         self.area = None
         self.area_timer = 0.0
         self.cursor_near = False
+        self.ghost_state = None  # (click_through, alpha) last applied to the window
 
     # ---- Input ----
 
@@ -74,6 +78,8 @@ class CompanionScreen(PetScreen):
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_s:
                 self.toggle_walking()
+            elif event.key == pygame.K_g:
+                self.toggle_ghost()
             else:
                 self.handle_shortcut(event.key)
 
@@ -94,6 +100,7 @@ class CompanionScreen(PetScreen):
             ("play", "Play  (P)"),
             ("sound", "Sound: off  (M)" if self.app.sounds.muted else "Sound: on  (M)"),
             ("walk", "Stay here  (S)" if self.app.walking else "Walk around  (S)"),
+            ("ghost", "Leave ghost mode  (G)" if self.app.ghost else "Ghost mode  (G)"),
             ("wardrobe", "Wardrobe  (W)"),
             ("big", "Big window  (C)"),
             ("hide", "Hide"),
@@ -109,6 +116,8 @@ class CompanionScreen(PetScreen):
             self.toggle_sound()
         elif choice == "walk":
             self.toggle_walking()
+        elif choice == "ghost":
+            self.toggle_ghost()
         elif choice == "wardrobe":
             self.app.open_wardrobe()
         elif choice == "big":
@@ -126,6 +135,27 @@ class CompanionScreen(PetScreen):
             self.wanderer.timer = 0  # stop and pick something calm to do
         self.app.sounds.play("click")
         self.app.save()
+
+    def toggle_ghost(self):
+        if not self.app.see_through:
+            self.say("Ghost mode only works on Windows.")
+            return
+        self.app.ghost = not self.app.ghost
+        self.say(self.pet.say("ghost_on" if self.app.ghost else "ghost_off"))
+        self.app.sounds.play("click")
+        self.app.save()
+
+    def apply_ghost(self, over_pet):
+        """Make the window click-through and faded (or solid again) when that changes."""
+        ctrl = self.app.ghost and desktop_window.ctrl_held()  # only ask Windows when it matters
+        state = desktop_window.ghost_style(self.app.ghost, ctrl, over_pet)
+        if state != self.ghost_state and self.app.see_through:
+            click_through, alpha = state
+            handle = self.app.window.handle
+            desktop_window.set_click_through(handle, click_through)
+            desktop_window.set_see_through(handle, desktop_window.KEY_COLOR, alpha)
+            self.ghost_state = state
+        return state[0]
 
     def end_drag(self):
         if self.dragging:
@@ -183,7 +213,10 @@ class CompanionScreen(PetScreen):
         # gets no mouse events at all while the cursor is over see-through parts.
         window_x, window_y = window.position
         local = (mouse[0] - window_x, mouse[1] - window_y)
-        self.hovered = self.over_pet(local) or (self.hovered and self.stats_rect.collidepoint(local))
+        over_pet = self.over_pet(local)
+        ghosted = self.apply_ghost(over_pet)
+        # A ghost can't be touched, so pointing at it doesn't count as hovering.
+        self.hovered = not ghosted and (over_pet or (self.hovered and self.stats_rect.collidepoint(local)))
         want_hand = self.hovered and not self.menu
         if want_hand != self.hand_cursor:
             self.hand_cursor = want_hand
@@ -196,7 +229,8 @@ class CompanionScreen(PetScreen):
         dx, dy = local[0] - center_x, local[1] - center_y
         near = (abs(dx) < NOTICE_DISTANCE and abs(dy) < NOTICE_DISTANCE
                 and not self.hovered and self.can_act() and not self.fall_speed)
-        if near and not self.cursor_near and self.wanderer.notice_cursor(dx):
+        quiet = self.app.ghost  # a ghost stays out of your way: it watches, but doesn't bark
+        if near and not self.cursor_near and not quiet and self.wanderer.notice_cursor(dx):
             self.facing = 1 if dx > 0 else -1
             self.say(self.pet.say("cursor"))
             self.app.sounds.play(CURSOR_SOUNDS.get(self.pet.species, "bark"))

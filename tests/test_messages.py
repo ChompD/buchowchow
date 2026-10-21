@@ -67,3 +67,12 @@ def test_unknown_situation_gives_empty_string():
 ])
 def test_format_duration(seconds, text):
     assert format_duration(seconds) == text
+
+
+def test_ghost_tip_is_always_the_line_shown():
+    # Turning ghost mode on must always explain how to reach the pet again.
+    for personality in PERSONALITIES:
+        for species in SPECIES:
+            for seed in range(5):
+                line = pick("ghost_on", personality, random.Random(seed), species=species, **VALUES)
+                assert "Ctrl" in line

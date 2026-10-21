@@ -48,10 +48,12 @@ class App:
         self.companion_pos = None   # where the companion window was last placed
         self.wardrobe_from_companion = False
         self.walking = True         # does the companion wander, or stay in one spot?
+        self.ghost = False          # is the companion faded and click-through?
 
         loaded = self.save_manager.load()
         self.companion_pos = self._checked_position(loaded.settings.get("companion_pos"))
         self.walking = loaded.settings.get("walking") is not False  # on unless switched off
+        self.ghost = loaded.settings.get("ghost") is True           # off unless switched on
         if loaded.pet:
             screen_class = CompanionScreen if loaded.settings.get("companion") is True else GameScreen
             self.show(screen_class(self, loaded.pet, seconds_away=loaded.seconds_away))
@@ -135,6 +137,7 @@ class App:
             "companion": self.in_companion or in_wardrobe_from_companion,
             "companion_pos": list(self.companion_pos) if self.companion_pos else None,
             "walking": self.walking,
+            "ghost": self.ghost,
         }
 
     def save(self):

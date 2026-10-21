@@ -2,7 +2,18 @@
 
 import pytest
 
-from desktop_window import default_position, fits_on_screen, ground_y, snap_position, walk_bounds, work_area
+from desktop_window import (
+    GHOST_ALPHA,
+    ctrl_held,
+    default_position,
+    fits_on_screen,
+    ghost_style,
+    ground_y,
+    set_click_through,
+    snap_position,
+    walk_bounds,
+    work_area,
+)
 
 DESKTOP = (1920, 1080)
 WINDOW = (240, 280)
@@ -60,3 +71,26 @@ def test_dropping_near_a_side_snaps_against_it():
 
 def test_dropping_in_the_middle_stays_put():
     assert snap_position((800, 300), WINDOW[0], HALF, FEET_Y, AREA) == (800, 300)
+
+
+# ---- Ghost mode ----
+
+def test_normal_pet_is_solid_and_clickable():
+    assert ghost_style(False, ctrl=False, over_pet=True) == (False, 255)
+    assert ghost_style(False, ctrl=True, over_pet=True) == (False, 255)
+
+
+@pytest.mark.parametrize("ctrl, over_pet", [(False, False), (False, True), (True, False)])
+def test_ghost_is_faded_and_click_through(ctrl, over_pet):
+    click_through, alpha = ghost_style(True, ctrl, over_pet)
+    assert click_through
+    assert 0 < alpha == GHOST_ALPHA < 255
+
+
+def test_ctrl_over_a_ghost_makes_it_reachable():
+    assert ghost_style(True, ctrl=True, over_pet=True) == (False, 255)
+
+
+def test_window_helpers_ignore_a_missing_window():
+    assert set_click_through(0, True) is False
+    assert isinstance(ctrl_held(), bool)

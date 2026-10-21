@@ -51,6 +51,14 @@ COMMON = {
     "cursor": [
         "Hey, I see you!",
     ],
+    "ghost_on": [
+        # Only one line on purpose: it tells you how to reach a ghost pet again.
+        "Boo! Hold Ctrl over me to click me.",
+    ],
+    "ghost_off": [
+        "I'm solid again!",
+        "Back to normal!",
+    ],
     "walk_on": [
         "Let's go for a walk!",
         "Adventure time!",
