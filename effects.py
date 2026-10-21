@@ -190,8 +190,8 @@ class Effects:
     def floating_text(self, text, font, color, pos):
         self.items.append(FloatingText(text, font, color, pos))
 
-    def level_up(self, pet_pos, banner_font, banner_pos):
+    def level_up(self, pet_pos, banner_font, banner_pos, text="LEVEL UP!", stars=28):
         self.flash_age = 0.0
-        self.burst("star", pet_pos, 28, [ui.GOLD, ui.XP_COLOR, ui.HAPPY_COLOR, ui.ENERGY_COLOR],
+        self.burst("star", pet_pos, stars, [ui.GOLD, ui.XP_COLOR, ui.HAPPY_COLOR, ui.ENERGY_COLOR],
                    speed=(140, 320), size=(6, 11), life=(0.8, 1.4), gravity=260, lift=80, spin=5)
-        self.overlays.append(Banner("LEVEL UP!", banner_font, banner_pos))
+        self.overlays.append(Banner(text, banner_font, banner_pos))

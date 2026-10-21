@@ -11,15 +11,18 @@ import pygame
 import effects
 import sounds
 import ui
+from messages import format_duration
 from pet import DEFAULT_NAME, MAX_NAME_LENGTH, Pet
+from save_manager import DEFAULT_SAVE_PATH, SaveManager
 
 WIDTH, HEIGHT = 460, 640
 FPS = 60
 MAX_FRAME_TIME = 0.25        # ignore long pauses (e.g. while dragging the window)
 MESSAGE_SECONDS = 3.0
 CHATTER_SECONDS = (12, 25)   # the pet says something on its own every 12-25 s
-PET_CENTER = (WIDTH // 2, 285)
-MOUTH_POS = (PET_CENTER[0] + 20, PET_CENTER[1] + 12)
+AUTOSAVE_SECONDS = 30
+AWAY_NOTE_SECONDS = 6.0
+PET_GROUND = (WIDTH // 2, 365)   # where the pet's feet touch the ground
 SOUND_FOLDER = Path(__file__).parent / "assets" / "sounds"
 
 # Which animation plays after a successful action.
@@ -29,8 +32,9 @@ ANIMATIONS = {"fed": "eating", "played": "playing", "petted": "petted"}
 class NameScreen:
     """First screen: the player types a name for their new pet."""
 
-    def __init__(self, app):
+    def __init__(self, app, notice=None):
         self.app = app
+        self.notice = notice  # e.g. a warning that the old save couldn't be read
         self.text = ""
         self.time = 0.0
         self.input_rect = pygame.Rect(60, 396, WIDTH - 120, 50)
@@ -66,10 +70,15 @@ class NameScreen:
 
         title = fonts.title.render("Meet your new pet!", True, ui.TEXT)
         surface.blit(title, title.get_rect(midtop=(WIDTH // 2, 32)))
-        subtitle = fonts.small.render("Give them a name to get started.", True, ui.TEXT_SOFT)
-        surface.blit(subtitle, subtitle.get_rect(midtop=(WIDTH // 2, 76)))
+        if self.notice:
+            for i, line in enumerate(ui.wrap_text(fonts.small, self.notice, WIDTH - 60)):
+                img = fonts.small.render(line, True, ui.COLLAR)
+                surface.blit(img, img.get_rect(midtop=(WIDTH // 2, 74 + i * fonts.small.get_linesize())))
+        else:
+            subtitle = fonts.small.render("Give them a name to get started.", True, ui.TEXT_SOFT)
+            surface.blit(subtitle, subtitle.get_rect(midtop=(WIDTH // 2, 76)))
 
-        self.app.pet_renderer.draw(surface, "happy", (WIDTH // 2, 245), self.time)
+        self.app.pet_renderer.draw(surface, "happy", (WIDTH // 2, 325), self.time)
 
         label = fonts.body.render("Pet name", True, ui.TEXT)
         surface.blit(label, label.get_rect(midbottom=(WIDTH // 2, self.input_rect.top - 6)))
@@ -99,7 +108,7 @@ class NameScreen:
 class GameScreen:
     """Main screen: the pet, its stats, and the Feed / Play buttons."""
 
-    def __init__(self, app, pet):
+    def __init__(self, app, pet, seconds_away=None):
         self.app = app
         self.pet = pet
         self.time = 0.0
@@ -107,9 +116,20 @@ class GameScreen:
 
         self.message = None
         self.message_timer = 0.0
-        self.say(f"Hi! I'm {pet.name}!")
         self.chatter_timer = random.uniform(*CHATTER_SECONDS)
+        self.autosave_timer = AUTOSAVE_SECONDS
         self.last_mood = pet.mood
+
+        # A returning pet greets you and says how long you were gone.
+        self.away_note = None
+        self.away_timer = 0.0
+        if seconds_away is None:
+            self.say(f"Hi! I'm {pet.name}!")
+        else:
+            self.say(pet.say("welcome_back"))
+            if seconds_away >= 60:
+                self.away_note = f"You were away for {format_duration(seconds_away)}"
+                self.away_timer = AWAY_NOTE_SECONDS
 
         # One-off animation currently playing (eating, playing, petted, refuse).
         self.action = None
@@ -136,6 +156,14 @@ class GameScreen:
             "xp": self.pet.xp_progress,
         }
 
+    def pet_center(self):
+        """Middle of the pet's body (it grows taller as it evolves)."""
+        s = ui.stage_look(self.pet.stage)["scale"]
+        return (PET_GROUND[0], PET_GROUND[1] - ui.PetRenderer.BODY_H * s / 2)
+
+    def over_pet(self, pos):
+        return self.app.pet_renderer.contains(PET_GROUND, pos, self.pet.stage)
+
     # ---- Input ----
 
     def handle_event(self, event):
@@ -147,11 +175,10 @@ class GameScreen:
             self.toggle_sound()
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.app.pet_renderer.contains(PET_CENTER, event.pos):
+            if self.over_pet(event.pos):
                 self.react(self.pet.cuddle(), at=event.pos)
         elif event.type == pygame.MOUSEMOTION:
-            over = (self.app.pet_renderer.contains(PET_CENTER, event.pos)
-                    or any(button.hovered for button in self.buttons))
+            over = self.over_pet(event.pos) or any(button.hovered for button in self.buttons)
             if over != self.hand_cursor:
                 self.hand_cursor = over
                 ui.set_hand_cursor(over)
@@ -182,6 +209,7 @@ class GameScreen:
         """Show what happened: speech, animation, sound and effects."""
         self.say(result.message)
         sound = self.app.sounds
+        center = self.pet_center()
 
         if result.kind not in ANIMATIONS:  # refused (too full / too tired)
             self.start_action("refuse")
@@ -190,18 +218,23 @@ class GameScreen:
 
         self.start_action(ANIMATIONS[result.kind])
         if result.kind == "petted":
-            self.effects.hearts(at or (PET_CENTER[0], PET_CENTER[1] - 60))
+            self.effects.hearts(at or (center[0], center[1] - 60))
             sound.play("petted")
         elif result.kind == "played":
-            self.effects.sparkles(PET_CENTER, 10)
+            self.effects.sparkles(center, 10)
             sound.play("played")
         # "fed" plays a chomp sound on each bite, in update()
 
         if result.xp_gained:
             self.effects.floating_text(f"+{result.xp_gained} XP", self.app.fonts.badge, ui.XP_COLOR,
-                                       (PET_CENTER[0] + 105, PET_CENTER[1] - 40))
-        if result.levels_gained:
-            self.effects.level_up(PET_CENTER, self.app.fonts.banner, (WIDTH // 2, PET_CENTER[1] - 30))
+                                       (center[0] + 105, center[1] - 40))
+        if result.evolved:
+            self.effects.level_up(center, self.app.fonts.banner, (WIDTH // 2, center[1] - 30),
+                                  text="EVOLVED!", stars=48)
+            sound.play("evolve")
+            self.app.save()  # don't risk losing a big moment
+        elif result.levels_gained:
+            self.effects.level_up(center, self.app.fonts.banner, (WIDTH // 2, center[1] - 30))
             sound.play("level_up")
 
     def xp_bar_tip(self):
@@ -214,10 +247,17 @@ class GameScreen:
         self.pet.update(dt)
         self.effects.update(dt)
 
+        self.autosave_timer -= dt
+        if self.autosave_timer <= 0:
+            self.autosave_timer = AUTOSAVE_SECONDS
+            self.app.save()
+
         if self.message_timer > 0:
             self.message_timer -= dt
             if self.message_timer <= 0:
                 self.message = None
+        if self.away_timer > 0:
+            self.away_timer -= dt
 
         if self.action:
             self.action_time += dt
@@ -225,7 +265,7 @@ class GameScreen:
             if self.action == "eating":
                 bite = int(progress * 6)
                 if bite != self.last_bite and bite % 2 == 1 and bite < 6:
-                    self.effects.crumbs(MOUTH_POS)
+                    self.effects.crumbs(self.app.pet_renderer.mouth_position(PET_GROUND, self.pet.stage))
                     self.app.sounds.play("fed")
                 self.last_bite = bite
             if progress >= 1:
@@ -258,22 +298,26 @@ class GameScreen:
         pet = self.pet
         surface.blit(self.app.background, (0, 0))
 
-        # Header: name, personality, level, sound toggle and XP
+        # Header: name, personality and stage, level, sound toggle and XP
         name_img = fonts.title.render(pet.name, True, ui.TEXT)
         name_rect = surface.blit(name_img, (24, 16))
-        trait = fonts.small.render(pet.personality.capitalize(), True, ui.TEXT_SOFT)
-        surface.blit(trait, trait.get_rect(bottomleft=(name_rect.right + 10, name_rect.bottom - 6)))
+        tag = fonts.small.render(f"{pet.personality.capitalize()} · {pet.stage_name}", True, ui.TEXT_SOFT)
+        surface.blit(tag, tag.get_rect(bottomleft=(name_rect.right + 10, name_rect.bottom - 6)))
         ui.draw_pill(surface, fonts.badge, f"Lv {pet.level}", ui.XP_COLOR,
                      topright=(self.sound_button.rect.left - 10, 24))
         self.sound_button.draw(surface)
-        ui.draw_stat(surface, fonts.small, (24, 62), WIDTH - 48, "Experience", self.shown["xp"],
+        xp_label = "Experience"
+        if pet.next_stage_level:
+            xp_label += f"  ·  evolves at Lv {pet.next_stage_level}"
+        ui.draw_stat(surface, fonts.small, (24, 62), WIDTH - 48, xp_label, self.shown["xp"],
                      f"{pet.xp} / {pet.xp_needed} XP", ui.XP_COLOR)
 
         # The pet, its mood, effects and what it's saying
         progress = self.action_time / ui.ACTION_DURATIONS[self.action] if self.action else 0.0
-        self.app.pet_renderer.draw(surface, pet.mood, PET_CENTER, self.time,
+        self.app.pet_renderer.draw(surface, pet.mood, PET_GROUND, self.time, stage=pet.stage,
                                    action=self.action, progress=min(1.0, progress))
-        caption = fonts.small.render(pet.mood_text(), True, ui.TEXT_SOFT)
+        caption_text = self.away_note if self.away_timer > 0 else pet.mood_text()
+        caption = fonts.small.render(caption_text, True, ui.TEXT_SOFT)
         surface.blit(caption, caption.get_rect(midtop=(WIDTH // 2, 384)))
         self.effects.draw(surface)
         if self.message:
@@ -299,7 +343,7 @@ class GameScreen:
 class App:
     """Owns the window and the main loop, and switches between screens."""
 
-    def __init__(self):
+    def __init__(self, save_path=DEFAULT_SAVE_PATH):
         pygame.mixer.pre_init(sounds.SAMPLE_RATE, -16, 1, 512)  # small buffer = snappy sounds
         pygame.init()
         pygame.display.set_caption("Desktop Pet")
@@ -309,16 +353,31 @@ class App:
         self.background = ui.make_gradient((WIDTH, HEIGHT), ui.BG_TOP, ui.BG_BOTTOM)
         self.pet_renderer = ui.PetRenderer(self.fonts.small)
         self.sounds = sounds.SoundBank(SOUND_FOLDER)
-        self.current = NameScreen(self)
+        self.save_manager = SaveManager(save_path)
         self.running = True
+
+        loaded = self.save_manager.load()
+        if loaded.pet:
+            self.current = GameScreen(self, loaded.pet, seconds_away=loaded.seconds_away)
+        elif loaded.status == "corrupt":
+            where = f" It was kept as {loaded.backup_path.name}." if loaded.backup_path else ""
+            self.current = NameScreen(self, notice=f"Your old save file couldn't be read, so here's a new pet.{where}")
+        else:
+            self.current = NameScreen(self)
 
     def start_game(self, name):
         self.current = GameScreen(self, Pet(name))
+        self.save()
+
+    def save(self):
+        if isinstance(self.current, GameScreen):
+            self.save_manager.save(self.current.pet)
 
     def step(self, dt):
         """Handle input, update and draw one frame."""
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
+                self.save()
                 self.running = False
             else:
                 self.current.handle_event(event)

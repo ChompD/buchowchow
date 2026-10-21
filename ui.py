@@ -41,6 +41,11 @@ COOKIE = (222, 166, 104)
 COOKIE_DARK = (150, 96, 60)
 COOKIE_CHIP = (98, 62, 48)
 
+BOW = (255, 112, 150)
+COLLAR = (226, 84, 108)
+GOLD_DARK = (214, 158, 46)
+GEM = (132, 164, 248)
+
 FONT_NAMES = "segoeui,verdana,arial"
 
 
@@ -223,6 +228,19 @@ def draw_speech_bubble(surface, font, text, anchor, alpha=255, max_width=300):
 
 # ---- The pet ----
 
+# What each evolution stage looks like (index = Pet.stage).
+STAGE_LOOKS = [
+    {"scale": 0.8},                                         # Baby
+    {"scale": 0.9, "bow": True},                            # Junior
+    {"scale": 1.0, "bow": True, "bell": True},              # Adult
+    {"scale": 1.06, "bell": True, "crown": True},           # Royal
+]
+
+
+def stage_look(stage):
+    return STAGE_LOOKS[max(0, min(stage, len(STAGE_LOOKS) - 1))]
+
+
 # How long each one-off animation lasts, in seconds.
 ACTION_DURATIONS = {
     "eating": 1.2,
@@ -304,8 +322,9 @@ class PetRenderer:
     """Draws the placeholder pet using simple shapes.
 
     Want custom pixel art later? Replace `draw` with code that picks an image
-    from assets/sprites based on `mood` / `action` and blits it at `center`.
-    The rest of the game only calls `draw(...)`, so nothing else needs to change.
+    from assets/sprites based on `mood`, `action` and `stage`, and blits it
+    standing at `ground`. The rest of the game only calls `draw(...)` and
+    `contains(...)`, so nothing else needs to change.
     """
 
     BODY_W = 190
@@ -314,14 +333,14 @@ class PetRenderer:
     def __init__(self, z_font):
         self.z_font = z_font
 
-    def draw(self, surface, mood, center, t, scale=1.0, action=None, progress=0.0):
-        """Draw the pet standing on the ground at `center` (the body's resting centre)."""
+    def draw(self, surface, mood, ground, t, stage=0, action=None, progress=0.0):
+        """Draw the pet with its feet at `ground` (x, y)."""
         pose = action_pose(action, progress) if action else idle_pose(mood, t)
-        s = scale
-        cx, cy = center
+        look = stage_look(stage)
+        s = look["scale"]
+        cx, ground_y = ground
         w = self.BODY_W * s * pose.sx
         h = self.BODY_H * s * pose.sy
-        ground_y = cy + self.BODY_H * s / 2
 
         # Ground shadow shrinks as the pet lifts off the ground.
         shadow = pygame.Rect(0, 0, self.BODY_W * s * 0.8 * max(0.35, 1 - pose.lift / 110), 18 * s)
@@ -331,7 +350,7 @@ class PetRenderer:
         # Draw the pet on its own transparent canvas so the whole thing can rotate.
         size = round(300 * s)
         canvas = pygame.Surface((size, size), pygame.SRCALPHA)
-        self._draw_pet(canvas, pose, size / 2, size / 2, w, h, t, s)
+        self._draw_pet(canvas, pose, look, size / 2, size / 2, w, h, t, s)
         if pose.angle:
             canvas = pygame.transform.rotozoom(canvas, pose.angle, 1.0)
 
@@ -347,17 +366,23 @@ class PetRenderer:
                 surface.blit(z, z.get_rect(center=(cx + w * 0.42 + phase * 24 * s,
                                                   body_y - h * 0.45 - phase * 46 * s)))
 
-    def contains(self, center, pos, scale=1.0):
+    def contains(self, ground, pos, stage=0):
         """True if screen position `pos` is on the pet (for click detection)."""
-        cx, cy = center
-        rx = self.BODY_W * scale / 2 + 6
-        ry = self.BODY_H * scale / 2 + 14  # a little extra on top for the ears
-        dx, dy = pos[0] - cx, pos[1] - (cy - 8 * scale)
+        s = stage_look(stage)["scale"]
+        cx, ground_y = ground
+        rx = self.BODY_W * s / 2 + 6
+        ry = self.BODY_H * s / 2 + 14  # a little extra on top for the ears
+        dx, dy = pos[0] - cx, pos[1] - (ground_y - self.BODY_H * s / 2 - 8 * s)
         return (dx / rx) ** 2 + (dy / ry) ** 2 <= 1
+
+    def mouth_position(self, ground, stage=0):
+        """Roughly where the mouth is, for crumbs while eating."""
+        s = stage_look(stage)["scale"]
+        return (ground[0] + 20 * s, ground[1] - self.BODY_H * s / 2 + 12 * s)
 
     # ---- Body parts ----
 
-    def _draw_pet(self, canvas, pose, bx, by, w, h, t, s):
+    def _draw_pet(self, canvas, pose, look, bx, by, w, h, t, s):
         self._draw_ears(canvas, bx, by, w, h)
 
         body = pygame.Rect(0, 0, w, h)
@@ -375,7 +400,43 @@ class PetRenderer:
             pygame.draw.ellipse(canvas, PET_OUTLINE, paw.inflate(6, 6))
             pygame.draw.ellipse(canvas, PET_BODY, paw)
 
+        if look.get("bell"):
+            self._draw_bell_collar(canvas, bx, by, w, h, s)
         self._draw_face(canvas, pose, bx, by, w, h, t, s)
+        if look.get("crown"):
+            self._draw_crown(canvas, bx, by - h * 0.47, s)
+        if look.get("bow"):
+            self._draw_bow(canvas, bx + w * 0.30, by - h * 0.43, s)
+
+    # ---- Accessories (unlocked by evolving) ----
+
+    def _draw_bow(self, canvas, x, y, s):
+        for side in (-1, 1):
+            loop = [(x, y), (x + side * 16 * s, y - 10 * s), (x + side * 16 * s, y + 10 * s)]
+            pygame.draw.polygon(canvas, BOW, loop)
+            pygame.draw.polygon(canvas, PET_OUTLINE, loop, width=2)
+        pygame.draw.circle(canvas, PET_OUTLINE, (x, y), 6 * s)
+        pygame.draw.circle(canvas, BOW, (x, y), 4.5 * s)
+
+    def _draw_bell_collar(self, canvas, bx, by, w, h, s):
+        center, radii = (bx, by + h * 0.02), (w * 0.27, h * 0.2)
+        draw_curve(canvas, PET_OUTLINE, center, radii, math.pi * 0.2, math.pi * 0.8, 10 * s)
+        draw_curve(canvas, COLLAR, center, radii, math.pi * 0.2, math.pi * 0.8, 7 * s)
+        bell = (bx, by + h * 0.22 + 6 * s)
+        pygame.draw.circle(canvas, GOLD_DARK, bell, 9 * s)
+        pygame.draw.circle(canvas, GOLD, bell, 7.5 * s)
+        pygame.draw.line(canvas, GOLD_DARK, (bell[0], bell[1] + 1 * s), (bell[0], bell[1] + 7 * s), 2)
+
+    def _draw_crown(self, canvas, x, base_y, s):
+        half, tall = 26 * s, 26 * s
+        points = [(x - half, base_y), (x - half, base_y - tall * 0.75), (x - half * 0.5, base_y - tall * 0.4),
+                  (x, base_y - tall), (x + half * 0.5, base_y - tall * 0.4), (x + half, base_y - tall * 0.75),
+                  (x + half, base_y)]
+        pygame.draw.polygon(canvas, GOLD, points)
+        pygame.draw.polygon(canvas, GOLD_DARK, points, width=2)
+        pygame.draw.circle(canvas, GEM, (x, base_y - tall * 0.35), 4 * s)
+        for side in (-1, 1):
+            pygame.draw.circle(canvas, HAPPY_COLOR, (x + side * half * 0.62, base_y - tall * 0.22), 3 * s)
 
     def _draw_ears(self, canvas, bx, by, w, h):
         for side in (-1, 1):
