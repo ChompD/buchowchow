@@ -5,8 +5,11 @@ The save file looks like this:
     {
       "version": 1,
       "saved_at": 1761100000.0,     <- Unix time, used for offline time
-      "pet": { "name": "Biscuit", "level": 3, ... }
+      "pet": { "name": "Biscuit", "level": 3, ... },
+      "settings": { "companion": true, "companion_pos": [1600, 700] }
     }
+
+"settings" is optional; a save without it (or with a broken one) still loads.
 
 Saving never crashes the game: problems are reported and the game carries on.
 A save file that can't be read is renamed to a backup (so nothing is lost)
@@ -18,7 +21,7 @@ import math
 import os
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
@@ -39,6 +42,7 @@ class LoadResult:
     pet: Optional[Pet] = None
     seconds_away: float = 0.0
     backup_path: Optional[Path] = None
+    settings: dict = field(default_factory=dict)
 
 
 class SaveManager:
@@ -52,9 +56,10 @@ class SaveManager:
         self.path = Path(path)
         self.clock = clock
 
-    def save(self, pet):
-        """Write the pet to disk. Returns True on success."""
-        data = {"version": SAVE_VERSION, "saved_at": self.clock(), "pet": pet.to_dict()}
+    def save(self, pet, settings=None):
+        """Write the pet (and optional app settings) to disk. Returns True on success."""
+        data = {"version": SAVE_VERSION, "saved_at": self.clock(), "pet": pet.to_dict(),
+                "settings": settings or {}}
         temp_path = self.path.with_name(self.path.name + ".tmp")
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -82,7 +87,10 @@ class SaveManager:
 
         seconds_away = max(0.0, self.clock() - saved_at)  # ignore clocks that went backwards
         pet.pass_time_offline(seconds_away)
-        return LoadResult("loaded", pet, seconds_away)
+        settings = data.get("settings")
+        if not isinstance(settings, dict):
+            settings = {}  # settings are a nice-to-have: never reject a save over them
+        return LoadResult("loaded", pet, seconds_away, settings=settings)
 
     @staticmethod
     def _parse(data):

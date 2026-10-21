@@ -106,3 +106,28 @@ def test_save_failure_does_not_crash(tmp_path, clock):
     blocked.mkdir()  # a folder where the file should go: writing must fail
     manager = SaveManager(blocked, clock=clock)
     assert manager.save(Pet("Biscuit")) is False
+
+
+# ---- Settings (companion mode and position) ----
+
+def test_settings_round_trip(manager):
+    settings = {"companion": True, "companion_pos": [1500, 700]}
+    manager.save(Pet("Biscuit"), settings)
+    assert manager.load().settings == settings
+
+
+def test_old_saves_without_settings_still_load(manager):
+    data = {"version": SAVE_VERSION, "saved_at": manager.clock(), "pet": {"name": "Biscuit"}}
+    manager.path.write_text(json.dumps(data), encoding="utf-8")
+    result = manager.load()
+    assert result.status == "loaded"
+    assert result.settings == {}
+
+
+def test_broken_settings_are_ignored_not_fatal(manager):
+    data = {"version": SAVE_VERSION, "saved_at": manager.clock(), "pet": {"name": "Biscuit"},
+            "settings": "oops"}
+    manager.path.write_text(json.dumps(data), encoding="utf-8")
+    result = manager.load()
+    assert result.status == "loaded"
+    assert result.settings == {}
