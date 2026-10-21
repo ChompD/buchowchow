@@ -16,15 +16,6 @@ def ease_out(p):
     return 1 - (1 - p) ** 2
 
 
-def draw_heart(surface, color, center, size):
-    x, y = center
-    r = size / 2
-    pygame.draw.circle(surface, color, (x - r * 0.5, y - r * 0.25), r * 0.6)
-    pygame.draw.circle(surface, color, (x + r * 0.5, y - r * 0.25), r * 0.6)
-    pygame.draw.polygon(surface, color, [(x - r * 1.08, y - r * 0.05), (x + r * 1.08, y - r * 0.05),
-                                         (x, y + r * 1.15)])
-
-
 def draw_star(surface, color, center, size, angle):
     x, y = center
     points = []
@@ -67,7 +58,7 @@ class Particle:
         if size < 0.5:
             return
         if self.kind == "heart":
-            draw_heart(surface, self.color, (self.x, self.y), size)
+            ui.draw_heart(surface, self.color, (self.x, self.y), size)
         elif self.kind == "star":
             draw_star(surface, self.color, (self.x, self.y), size, self.angle)
         else:
@@ -187,8 +178,8 @@ class Effects:
         self.burst("star", pos, count, [ui.XP_COLOR, ui.GOLD], speed=(30, 100), size=(4, 7),
                    life=(0.4, 0.8), spin=4)
 
-    def floating_text(self, text, font, color, pos):
-        self.items.append(FloatingText(text, font, color, pos))
+    def floating_text(self, text, font, color, pos, life=1.2):
+        self.items.append(FloatingText(text, font, color, pos, life=life))
 
     def level_up(self, pet_pos, banner_font, banner_pos, text="LEVEL UP!", stars=28, flash=True):
         if flash:

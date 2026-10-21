@@ -18,6 +18,7 @@ from companion import CompanionScreen
 from pet import Pet
 from save_manager import DEFAULT_SAVE_PATH, SaveManager
 from screens import HEIGHT, WIDTH, GameScreen, NameScreen, PetScreen
+from wardrobe_screen import WardrobeScreen
 
 FPS = 60
 MAX_FRAME_TIME = 0.25  # ignore long pauses (e.g. while dragging the window)
@@ -45,6 +46,7 @@ class App:
         self.in_companion = False   # is the window currently the small desktop pet?
         self.see_through = False    # did making the background invisible work?
         self.companion_pos = None   # where the companion window was last placed
+        self.wardrobe_from_companion = False
 
         loaded = self.save_manager.load()
         self.companion_pos = self._checked_position(loaded.settings.get("companion_pos"))
@@ -98,6 +100,24 @@ class App:
             self.show(CompanionScreen(self, pet, greeting=pet.say("companion_on")))
         self.save()
 
+    def open_wardrobe(self):
+        """Dress up the pet (the wardrobe always opens in the full-size window)."""
+        if not isinstance(self.current, PetScreen):
+            return
+        pet = self.current.pet
+        self.wardrobe_from_companion = self.in_companion
+        if self.in_companion:
+            self.companion_pos = self.window.position
+        self.show(WardrobeScreen(self, pet))
+
+    def close_wardrobe(self, changed=False):
+        """Go back to wherever the wardrobe was opened from."""
+        pet = self.current.pet
+        greeting = pet.say("outfit") if changed else None
+        back_to = CompanionScreen if self.wardrobe_from_companion else GameScreen
+        self.show(back_to(self, pet, greeting=greeting))
+        self.save()
+
     def start_game(self, name, species=None):
         pet = Pet(name, species=species)
         self.show(GameScreen(self, pet, greeting=f"Hi! I'm {pet.name}!"))
@@ -108,14 +128,16 @@ class App:
     def settings(self):
         if self.in_companion:
             self.companion_pos = self.window.position
+        in_wardrobe_from_companion = isinstance(self.current, WardrobeScreen) and self.wardrobe_from_companion
         return {
-            "companion": self.in_companion,
+            "companion": self.in_companion or in_wardrobe_from_companion,
             "companion_pos": list(self.companion_pos) if self.companion_pos else None,
         }
 
     def save(self):
-        if isinstance(self.current, PetScreen):
-            self.save_manager.save(self.current.pet, self.settings())
+        pet = getattr(self.current, "pet", None)  # the name screen has no pet yet
+        if pet is not None:
+            self.save_manager.save(pet, self.settings())
 
     def quit(self):
         self.save()

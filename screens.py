@@ -216,6 +216,8 @@ class PetScreen:
             self.toggle_sound()
         elif key == pygame.K_c:
             self.app.toggle_companion()
+        elif key == pygame.K_w:
+            self.app.open_wardrobe()
 
     def toggle_sound(self):
         self.app.sounds.toggle_mute()
@@ -265,6 +267,9 @@ class PetScreen:
         elif result.levels_gained:
             self.effects.level_up(center, self.app.fonts.banner, banner_pos, flash=self.FLASH)
             sound.play("level_up")
+        for i, name in enumerate(result.unlocked):  # new wardrobe items
+            self.effects.floating_text(f"New: {name}!", self.app.fonts.badge, ui.HAPPY_COLOR,
+                                       (center[0], center[1] + (20 + i * 22) * s), life=2.6)
 
     # ---- Update ----
 
@@ -313,7 +318,8 @@ class PetScreen:
         progress = self.action_time / ui.ACTION_DURATIONS[self.action] if self.action else 0.0
         self.app.pet_renderer.draw(surface, self.pet.mood, self.PET_GROUND, self.time, stage=self.pet.stage,
                                    action=self.action, progress=min(1.0, progress),
-                                   zoom=self.ZOOM, shadow=shadow, species=self.pet.species)
+                                   zoom=self.ZOOM, shadow=shadow, species=self.pet.species,
+                                   outfit=self.pet.outfit)
 
 
 class GameScreen(PetScreen):
@@ -333,7 +339,9 @@ class GameScreen(PetScreen):
         self.play_button = ui.Button((WIDTH - 224, 568, 200, 54), "Play", ui.PLAY_COLOR, fonts.button)
         self.sound_button = ui.IconButton((WIDTH - 58, 22, 34, 34), "sound")
         self.companion_button = ui.IconButton((WIDTH - 100, 22, 34, 34), "paw")
-        self.buttons = [self.feed_button, self.play_button, self.sound_button, self.companion_button]
+        self.wardrobe_button = ui.IconButton((WIDTH - 142, 22, 34, 34), "hanger")
+        self.buttons = [self.feed_button, self.play_button, self.sound_button, self.companion_button,
+                        self.wardrobe_button]
         self.hand_cursor = False
 
     def _targets(self):
@@ -356,6 +364,9 @@ class GameScreen(PetScreen):
             self.toggle_sound()
         if self.companion_button.handle_event(event):
             self.app.toggle_companion()
+            return
+        if self.wardrobe_button.handle_event(event):
+            self.app.open_wardrobe()
             return
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -391,7 +402,7 @@ class GameScreen(PetScreen):
         name_img = fonts.title.render(pet.name, True, ui.TEXT)
         name_rect = surface.blit(name_img, (24, 16))
         pill_rect = ui.draw_pill(surface, fonts.badge, f"Lv {pet.level}", ui.XP_COLOR,
-                                 topright=(self.companion_button.rect.left - 8, 24))
+                                 topright=(self.wardrobe_button.rect.left - 8, 24))
         room = pill_rect.left - 10 - (name_rect.right + 10)
         for text in (f"{pet.personality.capitalize()} {pet.species_name.lower()} · {pet.stage_name}",
                      f"{pet.species_name} · {pet.stage_name}", pet.stage_name):
@@ -402,6 +413,7 @@ class GameScreen(PetScreen):
         self.sound_button.icon = "muted" if self.app.sounds.muted else "sound"
         self.sound_button.draw(surface)
         self.companion_button.draw(surface)
+        self.wardrobe_button.draw(surface)
         xp_label = "Experience"
         if pet.next_stage_level:
             xp_label += f"  ·  evolves at Lv {pet.next_stage_level}"

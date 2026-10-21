@@ -39,7 +39,6 @@ COOKIE = (222, 166, 104)
 COOKIE_DARK = (150, 96, 60)
 COOKIE_CHIP = (98, 62, 48)
 
-BOW = (255, 112, 150)
 COLLAR = (226, 84, 108)
 GOLD_DARK = (214, 158, 46)
 GEM = (132, 164, 248)
@@ -174,6 +173,9 @@ def draw_icon(surface, icon, center, color=TEXT):
         else:
             draw_curve(surface, color, (x + 5, y), (5, 5), -math.pi / 3, math.pi / 3, 2, steps=10)
             draw_curve(surface, color, (x + 5, y), (10, 10), -math.pi / 3, math.pi / 3, 2, steps=14)
+    elif icon == "hanger":
+        draw_curve(surface, color, (cx + 1, cy - 8), (3.5, 3.5), math.pi * 0.9, math.pi * 2.4, 2, steps=10)
+        pygame.draw.lines(surface, color, True, [(cx, cy - 4), (cx - 10, cy + 6), (cx + 10, cy + 6)], 2)
     elif icon == "paw":
         pygame.draw.ellipse(surface, color, (cx - 6, cy - 1, 12, 9))
         for dx, dy in ((-7, -4), (-2.5, -8), (2.5, -8), (7, -4)):
@@ -237,13 +239,25 @@ def draw_speech_bubble(surface, font, text, anchor, alpha=255, max_width=300):
 
 # ---- The pet ----
 
-# What each evolution stage looks like (index = Pet.stage).
+# How big the pet is at each evolution stage (index = Pet.stage).
+# Accessories are chosen in the wardrobe, not by stage.
 STAGE_LOOKS = [
-    {"scale": 0.8},                                         # Baby
-    {"scale": 0.9, "bow": True},                            # Junior
-    {"scale": 1.0, "bow": True, "bell": True},              # Adult
-    {"scale": 1.06, "bell": True, "crown": True},           # Royal
+    {"scale": 0.8},    # Baby
+    {"scale": 0.9},    # Junior
+    {"scale": 1.0},    # Adult
+    {"scale": 1.06},   # Royal
 ]
+
+# The colours wardrobe items can come in (names match wardrobe.COLORS).
+OUTFIT_RGB = {
+    "pink": (255, 138, 178),
+    "red": (232, 86, 96),
+    "orange": (255, 160, 90),
+    "yellow": (255, 206, 92),
+    "green": (120, 200, 140),
+    "blue": (110, 160, 240),
+    "purple": (168, 136, 240),
+}
 
 
 def stage_look(stage):
@@ -375,11 +389,12 @@ class PetRenderer:
         self.z_font = z_font
 
     def draw(self, surface, mood, ground, t, stage=0, action=None, progress=0.0, zoom=1.0,
-             shadow=True, species="dog"):
+             shadow=True, species="dog", outfit=None):
         """Draw the pet with its feet at `ground` (x, y).
 
         `zoom` shrinks or grows the whole pet (the companion window uses a small
-        pet). `shadow=False` skips the ground shadow.
+        pet). `shadow=False` skips the ground shadow. `outfit` is a
+        wardrobe.Outfit (or None for no clothes).
         """
         pose = action_pose(action, progress) if action else idle_pose(mood, t)
         look = stage_look(stage)
@@ -401,7 +416,8 @@ class PetRenderer:
         # (Tall enough for bunny ears and a crown.)
         size = round(380 * s)
         canvas = pygame.Surface((size, size), pygame.SRCALPHA)
-        self._draw_pet(canvas, pose, look, kind, size / 2, size / 2, w, h, t, s)
+        worn = {slot: (key, color) for slot, key, color in outfit.worn()} if outfit else {}
+        self._draw_pet(canvas, pose, kind, worn, size / 2, size / 2, w, h, t, s)
         if pose.angle:
             canvas = pygame.transform.rotozoom(canvas, pose.angle, 1.0)
 
@@ -433,8 +449,14 @@ class PetRenderer:
 
     # ---- Body parts ----
 
-    def _draw_pet(self, canvas, pose, look, kind, bx, by, w, h, t, s):
+    def _draw_pet(self, canvas, pose, kind, worn, bx, by, w, h, t, s):
         outline, body_color = kind["outline"], kind["body"]
+        body_geom = Body(bx, by, w, h, s, outline)
+
+        def wear(slot):
+            if slot in worn:
+                key, color = worn[slot]
+                draw_outfit_item(canvas, key, OUTFIT_RGB.get(color, OUTFIT_RGB["pink"]), body_geom)
 
         # Things behind the head first; the body is drawn over their bases.
         self._draw_tail(canvas, kind, pose, bx, by, w, h, t, s)
@@ -453,6 +475,7 @@ class PetRenderer:
         belly = pygame.Rect(0, 0, w * 0.5, h * 0.34)
         belly.center = (bx, by + h * 0.24)
         pygame.draw.ellipse(canvas, kind["belly"], belly)
+        wear("body")
 
         for side in (-1, 1):
             paw = pygame.Rect(0, 0, 40 * s, 20 * s)
@@ -460,8 +483,7 @@ class PetRenderer:
             pygame.draw.ellipse(canvas, outline, paw.inflate(6, 6))
             pygame.draw.ellipse(canvas, body_color, paw)
 
-        if look.get("bell"):
-            self._draw_bell_collar(canvas, outline, bx, by, w, h, s)
+        wear("neck")
         if kind["ears"] == "floppy":
             self._draw_floppy_ears(canvas, kind, bx, by, w, h)
         if kind.get("stripes"):
@@ -470,10 +492,8 @@ class PetRenderer:
                 pygame.draw.line(canvas, kind["stripes"], (x, by - h * 0.42), (x, by - h * 0.32),
                                  max(2, round(4 * s)))
         self._draw_face(canvas, pose, kind, bx, by, w, h, t, s)
-        if look.get("crown"):
-            self._draw_crown(canvas, bx, by - h * 0.47, s)
-        if look.get("bow"):
-            self._draw_bow(canvas, outline, bx + w * 0.30, by - h * 0.43, s)
+        wear("face")
+        wear("head")
 
     def _draw_pointy_ears(self, canvas, kind, bx, by, w, h):
         for side in (-1, 1):
@@ -536,36 +556,6 @@ class PetRenderer:
             center = (bx + w * 0.47, by + h * 0.26)
             pygame.draw.circle(canvas, outline, center, w * 0.09 + 3)
             pygame.draw.circle(canvas, WHITE, center, w * 0.09)
-
-    # ---- Accessories (unlocked by evolving) ----
-
-    def _draw_bow(self, canvas, outline, x, y, s):
-        for side in (-1, 1):
-            loop = [(x, y), (x + side * 16 * s, y - 10 * s), (x + side * 16 * s, y + 10 * s)]
-            pygame.draw.polygon(canvas, BOW, loop)
-            pygame.draw.polygon(canvas, outline, loop, width=2)
-        pygame.draw.circle(canvas, outline, (x, y), 6 * s)
-        pygame.draw.circle(canvas, BOW, (x, y), 4.5 * s)
-
-    def _draw_bell_collar(self, canvas, outline, bx, by, w, h, s):
-        center, radii = (bx, by + h * 0.02), (w * 0.27, h * 0.2)
-        draw_curve(canvas, outline, center, radii, math.pi * 0.2, math.pi * 0.8, 10 * s)
-        draw_curve(canvas, COLLAR, center, radii, math.pi * 0.2, math.pi * 0.8, 7 * s)
-        bell = (bx, by + h * 0.22 + 6 * s)
-        pygame.draw.circle(canvas, GOLD_DARK, bell, 9 * s)
-        pygame.draw.circle(canvas, GOLD, bell, 7.5 * s)
-        pygame.draw.line(canvas, GOLD_DARK, (bell[0], bell[1] + 1 * s), (bell[0], bell[1] + 7 * s), 2)
-
-    def _draw_crown(self, canvas, x, base_y, s):
-        half, tall = 26 * s, 26 * s
-        points = [(x - half, base_y), (x - half, base_y - tall * 0.75), (x - half * 0.5, base_y - tall * 0.4),
-                  (x, base_y - tall), (x + half * 0.5, base_y - tall * 0.4), (x + half, base_y - tall * 0.75),
-                  (x + half, base_y)]
-        pygame.draw.polygon(canvas, GOLD, points)
-        pygame.draw.polygon(canvas, GOLD_DARK, points, width=2)
-        pygame.draw.circle(canvas, GEM, (x, base_y - tall * 0.35), 4 * s)
-        for side in (-1, 1):
-            pygame.draw.circle(canvas, HAPPY_COLOR, (x + side * half * 0.62, base_y - tall * 0.22), 3 * s)
 
     # ---- Face ----
 
@@ -677,3 +667,276 @@ class PetRenderer:
         pygame.draw.circle(canvas, COOKIE, (x, y), r)
         for ox, oy in ((-0.4, -0.3), (0.35, -0.1), (-0.05, 0.4)):
             pygame.draw.circle(canvas, COOKIE_CHIP, (x + ox * r, y + oy * r), max(1.0, r * 0.16))
+
+
+# ---- Wardrobe items ----
+
+@dataclass
+class Body:
+    """The measurements every item is placed against (canvas coordinates)."""
+
+    bx: float       # centre of the body
+    by: float
+    w: float        # body width and height
+    h: float
+    s: float        # overall scale
+    outline: tuple  # the pet's outline colour
+
+    @property
+    def eye_y(self):
+        return self.by - self.h * 0.08
+
+
+def draw_heart(surface, color, center, size):
+    x, y = center
+    r = size / 2
+    pygame.draw.circle(surface, color, (x - r * 0.5, y - r * 0.25), r * 0.6)
+    pygame.draw.circle(surface, color, (x + r * 0.5, y - r * 0.25), r * 0.6)
+    pygame.draw.polygon(surface, color, [(x - r * 1.08, y - r * 0.05), (x + r * 1.08, y - r * 0.05),
+                                         (x, y + r * 1.15)])
+
+
+def draw_outfit_item(canvas, key, color, b):
+    """Draw one wardrobe item (see wardrobe.ITEMS) on the pet's canvas."""
+    painter = ITEM_PAINTERS.get(key)
+    if painter:
+        painter(canvas, color, b)
+
+
+def _outlined_polygon(canvas, color, outline, points, width=2):
+    pygame.draw.polygon(canvas, color, points)
+    pygame.draw.polygon(canvas, outline, points, width=width)
+
+
+def _outlined_circle(canvas, color, outline, center, radius, width=2):
+    pygame.draw.circle(canvas, outline, center, radius + width)
+    pygame.draw.circle(canvas, color, center, radius)
+
+
+# Head
+
+def _paint_bow(canvas, color, b):
+    x, y, s = b.bx + b.w * 0.30, b.by - b.h * 0.43, b.s
+    for side in (-1, 1):
+        _outlined_polygon(canvas, color, b.outline,
+                          [(x, y), (x + side * 16 * s, y - 10 * s), (x + side * 16 * s, y + 10 * s)])
+    _outlined_circle(canvas, color, b.outline, (x, y), 4.5 * s)
+
+
+def _paint_flower(canvas, color, b):
+    x, y, s = b.bx - b.w * 0.28, b.by - b.h * 0.40, b.s
+    petals = [(x + 8 * s * math.cos(a), y + 8 * s * math.sin(a))
+              for a in (i * 2 * math.pi / 5 - math.pi / 2 for i in range(5))]
+    for p in petals:
+        pygame.draw.circle(canvas, b.outline, p, 7 * s + 2)
+    for p in petals:
+        pygame.draw.circle(canvas, color, p, 7 * s)
+    middle = OUTFIT_RGB["orange"] if color == OUTFIT_RGB["yellow"] else GOLD
+    pygame.draw.circle(canvas, middle, (x, y), 5 * s)
+
+
+def _paint_party_hat(canvas, color, b):
+    s, base = b.s, b.by - b.h * 0.45
+    tip = (b.bx + 8 * s, base - 48 * s)
+    _outlined_polygon(canvas, color, b.outline, [(b.bx - 20 * s, base), (b.bx + 20 * s, base), tip])
+    for t in (0.3, 0.55, 0.78):  # polka dots up the middle
+        x = b.bx + (tip[0] - b.bx) * t
+        y = base + (tip[1] - base) * t
+        pygame.draw.circle(canvas, WHITE, (x, y), 3.5 * s * (1.2 - t * 0.5))
+    _outlined_circle(canvas, WHITE, b.outline, tip, 6 * s)
+
+
+def _paint_beanie(canvas, color, b):
+    s, cy = b.s, b.by - b.h * 0.42
+    rx, ry = b.w * 0.33, b.h * 0.26
+    dome = [(b.bx + rx * math.cos(a), cy + ry * math.sin(a))
+            for a in (math.pi + math.pi * i / 20 for i in range(21))]
+    _outlined_polygon(canvas, color, b.outline, dome)
+    band = pygame.Rect(0, 0, b.w * 0.74, 13 * s)
+    band.center = (b.bx, cy)
+    pygame.draw.rect(canvas, mix(color, (0, 0, 0), 0.18), band, border_radius=round(6 * s))
+    pygame.draw.rect(canvas, b.outline, band, width=2, border_radius=round(6 * s))
+    _outlined_circle(canvas, mix(color, WHITE, 0.45), b.outline, (b.bx, cy - ry - 4 * s), 9 * s)
+
+
+def _paint_crown(canvas, color, b):
+    x, base_y, s = b.bx, b.by - b.h * 0.47, b.s
+    half, tall = 26 * s, 26 * s
+    points = [(x - half, base_y), (x - half, base_y - tall * 0.75), (x - half * 0.5, base_y - tall * 0.4),
+              (x, base_y - tall), (x + half * 0.5, base_y - tall * 0.4), (x + half, base_y - tall * 0.75),
+              (x + half, base_y)]
+    pygame.draw.polygon(canvas, GOLD, points)
+    pygame.draw.polygon(canvas, GOLD_DARK, points, width=2)
+    pygame.draw.circle(canvas, GEM, (x, base_y - tall * 0.35), 4 * s)
+    for side in (-1, 1):
+        pygame.draw.circle(canvas, HAPPY_COLOR, (x + side * half * 0.62, base_y - tall * 0.22), 3 * s)
+
+
+# Face
+
+def _eye_centers(b):
+    return [(b.bx + side * b.w * 0.19, b.eye_y) for side in (-1, 1)]
+
+
+def _paint_temples(canvas, color, b, inner_gap):
+    """The bridge between the lenses and the arms going back to the ears."""
+    s = b.s
+    (lx, y), (rx, _) = _eye_centers(b)
+    draw_curve(canvas, color, ((lx + rx) / 2, y + 2 * s), ((rx - lx) / 2 - inner_gap, 5 * s),
+               math.pi * 1.15, math.pi * 1.85, 3 * s, steps=12)
+    for x, side in ((lx, -1), (rx, 1)):
+        pygame.draw.line(canvas, color, (x + side * inner_gap, y - 2 * s),
+                         (b.bx + side * b.w * 0.44, y - 6 * s), max(2, round(3 * s)))
+
+
+def _paint_glasses(canvas, color, b):
+    s = b.s
+    for x, y in _eye_centers(b):
+        pygame.draw.circle(canvas, color, (x, y), 15 * s, max(2, round(3 * s)))
+        draw_curve(canvas, WHITE, (x, y), (10 * s, 10 * s), math.pi * 1.15, math.pi * 1.45, 2 * s, steps=6)
+    _paint_temples(canvas, color, b, 15 * s)
+
+
+def _paint_sunglasses(canvas, color, b):
+    s, dark = b.s, (44, 38, 52)
+    for x, y in _eye_centers(b):
+        lens = pygame.Rect(0, 0, 34 * s, 24 * s)
+        lens.center = (x, y)
+        pygame.draw.rect(canvas, dark, lens, border_radius=round(9 * s))
+        pygame.draw.line(canvas, WHITE, (x - 9 * s, y - 2 * s), (x - 3 * s, y - 8 * s), max(1, round(2 * s)))
+    _paint_temples(canvas, dark, b, 17 * s)
+
+
+def _paint_heart_shades(canvas, color, b):
+    s = b.s
+    for x, y in _eye_centers(b):
+        draw_heart(canvas, b.outline, (x, y), 36 * s)
+        draw_heart(canvas, color, (x, y), 31 * s)
+        pygame.draw.circle(canvas, WHITE, (x - 6 * s, y - 5 * s), 2.5 * s)
+    _paint_temples(canvas, b.outline, b, 16 * s)
+
+
+# Neck
+
+def _collar_curve(canvas, color, b, width, spread=0.2):
+    center, radii = (b.bx, b.by + b.h * 0.02), (b.w * 0.27, b.h * 0.2)
+    start, end = math.pi * spread, math.pi * (1 - spread)
+    draw_curve(canvas, b.outline, center, radii, start, end, width + 3 * b.s)
+    draw_curve(canvas, color, center, radii, start, end, width)
+
+
+def _paint_bell_collar(canvas, color, b):
+    s = b.s
+    _collar_curve(canvas, color, b, 7 * s)
+    bell = (b.bx, b.by + b.h * 0.22 + 6 * s)
+    pygame.draw.circle(canvas, GOLD_DARK, bell, 9 * s)
+    pygame.draw.circle(canvas, GOLD, bell, 7.5 * s)
+    pygame.draw.line(canvas, GOLD_DARK, (bell[0], bell[1] + 1 * s), (bell[0], bell[1] + 7 * s), 2)
+
+
+def _paint_bandana(canvas, color, b):
+    s = b.s
+    top = b.by + b.h * 0.17
+    _outlined_polygon(canvas, color, b.outline,
+                      [(b.bx - b.w * 0.18, top), (b.bx + b.w * 0.18, top), (b.bx, b.by + b.h * 0.40)])
+    for dx, dy in ((-0.07, 0.24), (0.07, 0.24), (0, 0.32)):
+        pygame.draw.circle(canvas, WHITE, (b.bx + b.w * dx, b.by + b.h * dy), 2.5 * s)
+    _collar_curve(canvas, color, b, 7 * s)
+
+
+def _paint_bow_tie(canvas, color, b):
+    s = b.s
+    x, y = b.bx, b.by + b.h * 0.22
+    for side in (-1, 1):
+        _outlined_polygon(canvas, color, b.outline,
+                          [(x, y), (x + side * 22 * s, y - 12 * s), (x + side * 22 * s, y + 12 * s)])
+    knot = pygame.Rect(0, 0, 10 * s, 12 * s)
+    knot.center = (x, y)
+    pygame.draw.rect(canvas, mix(color, (0, 0, 0), 0.15), knot, border_radius=round(3 * s))
+    pygame.draw.rect(canvas, b.outline, knot, width=2, border_radius=round(3 * s))
+
+
+def _paint_scarf(canvas, color, b):
+    s = b.s
+    tail = pygame.Rect(b.bx + b.w * 0.08, b.by + b.h * 0.16, 17 * s, 42 * s)
+    pygame.draw.rect(canvas, color, tail, border_radius=round(4 * s))
+    pygame.draw.rect(canvas, b.outline, tail, width=2, border_radius=round(4 * s))
+    for i in range(3):  # fringe
+        x = tail.x + (i + 1) * tail.width / 4
+        pygame.draw.line(canvas, b.outline, (x, tail.bottom), (x, tail.bottom + 5 * s), 2)
+    pygame.draw.line(canvas, mix(color, WHITE, 0.4), (tail.x + 3 * s, tail.y + 14 * s),
+                     (tail.right - 3 * s, tail.y + 14 * s), max(2, round(4 * s)))
+    _collar_curve(canvas, color, b, 15 * s, spread=0.12)
+
+
+# Body (clothes are clipped to the body's shape)
+
+def _paint_clothes(canvas, color, b, neckline, decorate):
+    """Fill the body below a curved neckline with `color`, add details, and trim to the body."""
+    size = canvas.get_size()
+    layer = pygame.Surface(size, pygame.SRCALPHA)
+    top = b.by + b.h * neckline
+    dip = b.h * 0.07
+    curve = [(b.bx + dx, top + dip * (1 - min(1.0, (dx / (b.w * 0.5)) ** 2)))
+             for dx in (b.w * (i / 10 - 1) for i in range(21))]
+    pygame.draw.polygon(layer, color, curve + [(b.bx + b.w, b.by + b.h), (b.bx - b.w, b.by + b.h)])
+    decorate(layer, color, b, top + dip)
+    pygame.draw.lines(layer, b.outline, False, curve, max(2, round(3 * b.s)))
+
+    # Keep only the part inside the body ellipse.
+    mask = pygame.Surface(size, pygame.SRCALPHA)
+    body = pygame.Rect(0, 0, b.w, b.h)
+    body.center = (b.bx, b.by)
+    pygame.draw.ellipse(mask, (255, 255, 255, 255), body)
+    layer.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+    canvas.blit(layer, (0, 0))
+
+
+def _sweater_details(layer, color, b, neck_y):
+    light = mix(color, WHITE, 0.45)
+    for offset in (0.3, 0.4):
+        stripe = pygame.Rect(b.bx - b.w, b.by + b.h * offset, b.w * 2, b.h * 0.04)
+        pygame.draw.rect(layer, light, stripe)
+
+
+def _tshirt_details(layer, color, b, neck_y):
+    draw_heart(layer, WHITE, (b.bx, b.by + b.h * 0.33), 20 * b.s)
+
+
+def _raincoat_details(layer, color, b, neck_y):
+    s = b.s
+    dark = mix(color, (0, 0, 0), 0.25)
+    pygame.draw.line(layer, dark, (b.bx, neck_y), (b.bx, b.by + b.h), max(2, round(3 * s)))
+    for i in range(3):
+        pygame.draw.circle(layer, dark, (b.bx + 7 * s, neck_y + (8 + i * 11) * s), 3 * s)
+
+
+def _paint_sweater(canvas, color, b):
+    _paint_clothes(canvas, color, b, 0.14, _sweater_details)
+
+
+def _paint_tshirt(canvas, color, b):
+    _paint_clothes(canvas, color, b, 0.17, _tshirt_details)
+
+
+def _paint_raincoat(canvas, color, b):
+    _paint_clothes(canvas, color, b, 0.11, _raincoat_details)
+
+
+ITEM_PAINTERS = {
+    "bow": _paint_bow,
+    "flower": _paint_flower,
+    "party_hat": _paint_party_hat,
+    "beanie": _paint_beanie,
+    "crown": _paint_crown,
+    "glasses": _paint_glasses,
+    "sunglasses": _paint_sunglasses,
+    "heart_shades": _paint_heart_shades,
+    "bell_collar": _paint_bell_collar,
+    "bandana": _paint_bandana,
+    "bow_tie": _paint_bow_tie,
+    "scarf": _paint_scarf,
+    "sweater": _paint_sweater,
+    "tshirt": _paint_tshirt,
+    "raincoat": _paint_raincoat,
+}

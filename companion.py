@@ -3,8 +3,8 @@
 - Drag the pet to move it.
 - Click the pet to give it a pat.
 - Hover over the pet to see its stats.
-- Right-click the pet for a menu (Feed, Play, Sound, Big window, Hide, Quit).
-- Keyboard shortcuts F, P, M and C work while the pet's window is focused.
+- Right-click the pet for a menu (Feed, Play, Sound, Wardrobe, Big window, Hide, Quit).
+- Keyboard shortcuts F, P, M, C and W work while the pet's window is focused.
 """
 
 import pygame
@@ -71,6 +71,7 @@ class CompanionScreen(PetScreen):
             ("feed", "Feed  (F)"),
             ("play", "Play  (P)"),
             ("sound", "Sound: off  (M)" if self.app.sounds.muted else "Sound: on  (M)"),
+            ("wardrobe", "Wardrobe  (W)"),
             ("big", "Big window  (C)"),
             ("hide", "Hide"),
             ("quit", "Quit"),
@@ -83,6 +84,8 @@ class CompanionScreen(PetScreen):
             self.react(self.pet.play())
         elif choice == "sound":
             self.toggle_sound()
+        elif choice == "wardrobe":
+            self.app.open_wardrobe()
         elif choice == "big":
             self.app.toggle_companion()
         elif choice == "hide":
