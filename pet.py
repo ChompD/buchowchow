@@ -9,6 +9,7 @@ import random
 from dataclasses import dataclass
 
 from messages import PERSONALITIES, SPECIES, SPECIES_NAMES, pick
+from wardrobe import Outfit, unlocked_between
 
 STAT_MIN = 0
 STAT_MAX = 100
@@ -95,6 +96,7 @@ class ActionResult:
     xp_gained: int = 0
     levels_gained: int = 0
     evolved: bool = False
+    unlocked: tuple = ()  # names of wardrobe items unlocked by this level up
 
 
 class Pet:
@@ -122,6 +124,7 @@ class Pet:
             personality = self.rng.choice(PERSONALITIES)
         self.personality = personality
         self.species = species if species in SPECIES else DEFAULT_SPECIES
+        self.outfit = Outfit()
         self.cuddle_cooldown = 0.0
 
     # ---- Time ----
@@ -182,16 +185,18 @@ class Pet:
         return levels
 
     def _reward(self, kind, xp):
-        stage_before = self.stage
+        stage_before, level_before = self.stage, self.level
         levels = self.add_xp(xp)
         evolved = self.stage > stage_before
+        unlocked = tuple(item.name for item in unlocked_between(level_before, self.level))
         if evolved:
             message = self.say("evolved")
         elif levels:
             message = self.say("level_up")
         else:
             message = self.say(kind)
-        return ActionResult(kind, message, xp_gained=xp, levels_gained=levels, evolved=evolved)
+        return ActionResult(kind, message, xp_gained=xp, levels_gained=levels, evolved=evolved,
+                            unlocked=unlocked)
 
     @property
     def xp_needed(self):
@@ -233,6 +238,7 @@ class Pet:
             "energy": round(self.energy, 2),
             "xp": self.xp,
             "level": self.level,
+            "outfit": self.outfit.to_dict(),
         }
 
     @classmethod
@@ -255,8 +261,14 @@ class Pet:
             if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
                 raise ValueError(f"{key} must be a number")
             numbers[key] = value
-        return cls(name, personality=data.get("personality"), species=data.get("species"),
-                   rng=rng, **numbers)
+        pet = cls(name, personality=data.get("personality"), species=data.get("species"),
+                  rng=rng, **numbers)
+        if "outfit" in data:
+            pet.outfit = Outfit.from_dict(data["outfit"], pet.level)
+        else:
+            # Saved before the wardrobe existed: keep the accessories it used to get automatically.
+            pet.outfit = Outfit.for_stage(pet.stage, pet.level)
+        return pet
 
     # ---- Mood and talking ----
 

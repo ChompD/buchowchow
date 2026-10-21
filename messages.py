@@ -48,6 +48,11 @@ COMMON = {
         "I'll hang out right here.",
         "Don't mind me!",
     ],
+    "outfit": [
+        "How do I look?",
+        "I feel fancy!",
+        "Ooh, stylish!",
+    ],
     "welcome_back": [
         "You're back! I missed you!",
         "Yay, you're here again!",
@@ -106,6 +111,7 @@ BY_PERSONALITY = {
     },
     "shy": {
         "welcome_back": ["...oh! Hi again."],
+        "outfit": ["...do you like it?"],
         "petted": ["Oh! ...hehe, thank you.", "*blushes*"],
         "played": ["That was... really fun!"],
         "idle_content": ["...hi.", "*peeks at you*"],
@@ -120,6 +126,7 @@ BY_SPECIES = {
         "idle_content": ["*sniff sniff*"],
         "idle_happy": ["*tail wagging intensifies*"],
         "welcome_back": ["*zoomies* You're home!"],
+        "outfit": ["*proud tail wag*"],
     },
     "cat": {
         "petted": ["Purrr...", "Mrrrp!"],
