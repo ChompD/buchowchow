@@ -1,6 +1,6 @@
 """Everything the pet can say, grouped by situation and personality.
 
-Lines may use {name} and {level}. Add as many as you like: the game picks one
+Lines may use {name}, {level} and {stage}. Add as many as you like: the game picks one
 at random. Personality lines are mixed in with the common ones, and are a bit
 more likely to be picked so each personality feels different.
 """
@@ -37,6 +37,15 @@ COMMON = {
         "Level up! {name} is now level {level}!",
         "I feel stronger! Level {level}!",
     ],
+    "evolved": [
+        "Whoa! {name} grew into a {stage}!",
+        "Look at me! I'm a {stage} now!",
+    ],
+    "welcome_back": [
+        "You're back! I missed you!",
+        "Yay, you're here again!",
+        "Welcome back!",
+    ],
     "idle_happy": [
         "Today is a great day!",
         "La la la~",
@@ -66,6 +75,7 @@ COMMON = {
 
 BY_PERSONALITY = {
     "cheerful": {
+        "welcome_back": ["Hooray, best day ever, you're back!"],
         "fed": ["Best meal ever!"],
         "petted": ["You're the best!"],
         "idle_happy": ["Everything is wonderful!"],
@@ -88,6 +98,7 @@ BY_PERSONALITY = {
         "idle_tired": ["Zzz... five more minutes..."],
     },
     "shy": {
+        "welcome_back": ["...oh! Hi again."],
         "petted": ["Oh! ...hehe, thank you.", "*blushes*"],
         "played": ["That was... really fun!"],
         "idle_content": ["...hi.", "*peeks at you*"],
@@ -102,3 +113,18 @@ def pick(kind, personality, rng=random, **values):
     if not pool:
         return ""
     return rng.choice(pool).format_map(values)
+
+
+def format_duration(seconds):
+    """Friendly length of time, e.g. "45s", "12m", "2h 5m", "3d 4h"."""
+    seconds = max(0, int(seconds))
+    days, rest = divmod(seconds, 86400)
+    hours, rest = divmod(rest, 3600)
+    minutes, secs = divmod(rest, 60)
+    if days:
+        return f"{days}d {hours}h" if hours else f"{days}d"
+    if hours:
+        return f"{hours}h {minutes}m" if minutes else f"{hours}h"
+    if minutes:
+        return f"{minutes}m"
+    return f"{secs}s"

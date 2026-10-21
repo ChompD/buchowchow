@@ -1,16 +1,19 @@
 """Tests for the pet's game rules (no window needed)."""
 
-import pytest
-
 import random
+
+import pytest
 
 from messages import PERSONALITIES
 from pet import (
     CUDDLE_COOLDOWN,
     CUDDLE_HAPPINESS,
     DEFAULT_NAME,
+    EVOLUTION_STAGES,
     FEED_XP,
     MAX_NAME_LENGTH,
+    MAX_OFFLINE_SECONDS,
+    OFFLINE_RATE,
     PLAY_ENERGY_COST,
     PLAY_XP,
     Pet,
@@ -242,3 +245,93 @@ def test_petting_works_again_after_cooldown():
     before = pet.happiness
     pet.cuddle()
     assert pet.happiness > before
+
+
+# ---- Evolution ----
+
+def test_new_pet_is_a_baby():
+    pet = Pet("Bean")
+    assert pet.stage == 0
+    assert pet.stage_name == "Baby"
+    assert pet.next_stage_level == EVOLUTION_STAGES[1][0]
+
+
+@pytest.mark.parametrize("level, name", [(1, "Baby"), (2, "Baby"), (3, "Junior"), (5, "Junior"),
+                                         (6, "Adult"), (9, "Adult"), (10, "Royal"), (50, "Royal")])
+def test_stage_follows_level(level, name):
+    assert Pet("Bean", level=level).stage_name == name
+
+
+def test_fully_evolved_pet_has_no_next_stage():
+    assert Pet("Bean", level=10).next_stage_level is None
+
+
+def test_reaching_a_stage_level_evolves():
+    pet = Pet("Bean", level=2, hunger=80, xp=xp_for_next_level(2) - 1)
+    result = pet.feed()
+    assert result.evolved
+    assert pet.stage_name == "Junior"
+    assert "Junior" in result.message
+
+
+def test_normal_level_up_is_not_an_evolution():
+    pet = Pet("Bean", level=1, hunger=80, xp=xp_for_next_level(1) - 1)
+    result = pet.feed()
+    assert result.levels_gained == 1
+    assert not result.evolved
+
+
+# ---- Offline time ----
+
+def test_offline_time_passes_slower():
+    pet = Pet("Bean", hunger=20, happiness=80, energy=20)
+    pet.pass_time_offline(600)
+    online = Pet("Bean", hunger=20, happiness=80, energy=20)
+    online.update(600 * OFFLINE_RATE)
+    assert pet.hunger == online.hunger
+    assert pet.hunger > 20 and pet.happiness < 80 and pet.energy > 20
+
+
+def test_offline_time_is_capped():
+    a = Pet("Bean", hunger=0, happiness=100, energy=0)
+    b = Pet("Bean", hunger=0, happiness=100, energy=0)
+    a.pass_time_offline(MAX_OFFLINE_SECONDS)
+    b.pass_time_offline(MAX_OFFLINE_SECONDS * 100)
+    assert (a.hunger, a.happiness, a.energy) == (b.hunger, b.happiness, b.energy)
+
+
+def test_negative_offline_time_is_ignored():
+    pet = Pet("Bean", hunger=20)
+    pet.pass_time_offline(-5000)
+    assert pet.hunger == 20
+
+
+# ---- Save data ----
+
+def test_to_dict_and_back_keeps_everything():
+    pet = Pet("Bean", hunger=12.5, happiness=88, energy=40, xp=7, level=4, personality="shy")
+    copy = Pet.from_dict(pet.to_dict())
+    assert copy.to_dict() == pet.to_dict()
+
+
+def test_from_dict_fills_in_missing_stats():
+    pet = Pet.from_dict({"name": "Bean"})
+    assert pet.level == 1
+    assert pet.personality in PERSONALITIES
+
+
+def test_from_dict_clamps_out_of_range_values():
+    pet = Pet.from_dict({"name": "Bean", "hunger": 500, "energy": -3, "level": 0})
+    assert pet.hunger == 100
+    assert pet.energy == 0
+    assert pet.level == 1
+
+
+@pytest.mark.parametrize("data", [
+    None, [], "Bean", {}, {"name": 42}, {"name": "Bean", "hunger": "lots"},
+    {"name": "Bean", "level": True}, {"name": "Bean", "xp": float("nan")},
+    {"name": "Bean", "energy": float("inf")},
+])
+def test_from_dict_rejects_bad_data(data):
+    with pytest.raises(ValueError):
+        Pet.from_dict(data)

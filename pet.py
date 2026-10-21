@@ -4,6 +4,7 @@ This module has no Pygame imports on purpose. Keeping the game rules separate
 from the drawing code means they can be unit-tested without opening a window.
 """
 
+import math
 import random
 from dataclasses import dataclass
 
@@ -35,6 +36,20 @@ PLAY_XP = 15
 # Petting (clicking the pet). No XP, and a cooldown so it can't be spammed.
 CUDDLE_HAPPINESS = 3
 CUDDLE_COOLDOWN = 4.0      # seconds
+
+# Time away: while the game is closed, time passes 80x slower for the pet,
+# and at most 8 hours count. A full night away adds about 60 hunger, so the
+# pet is hungry but not miserable, and a weekend away is no worse than a night.
+OFFLINE_RATE = 1 / 80
+MAX_OFFLINE_SECONDS = 8 * 60 * 60
+
+# Evolution stages: (level reached, stage name)
+EVOLUTION_STAGES = [
+    (1, "Baby"),
+    (3, "Junior"),
+    (6, "Adult"),
+    (10, "Royal"),
+]
 
 # Mood thresholds (checked in priority order in Pet.mood)
 HUNGRY_AT = 70             # hunger >= 70
@@ -78,6 +93,7 @@ class ActionResult:
     message: str
     xp_gained: int = 0
     levels_gained: int = 0
+    evolved: bool = False
 
 
 class Pet:
@@ -116,6 +132,11 @@ class Pet:
         self.happiness = clamp(self.happiness - HAPPINESS_RATE * dt)
         self.energy = clamp(self.energy + ENERGY_RATE * dt)
         self.cuddle_cooldown = max(0.0, self.cuddle_cooldown - dt)
+
+    def pass_time_offline(self, seconds):
+        """Catch up on time that passed while the game was closed."""
+        seconds = min(max(0.0, seconds), MAX_OFFLINE_SECONDS)
+        self.update(seconds * OFFLINE_RATE)
 
     # ---- Actions ----
 
@@ -159,9 +180,16 @@ class Pet:
         return levels
 
     def _reward(self, kind, xp):
+        stage_before = self.stage
         levels = self.add_xp(xp)
-        message = self.say("level_up") if levels else self.say(kind)
-        return ActionResult(kind, message, xp_gained=xp, levels_gained=levels)
+        evolved = self.stage > stage_before
+        if evolved:
+            message = self.say("evolved")
+        elif levels:
+            message = self.say("level_up")
+        else:
+            message = self.say(kind)
+        return ActionResult(kind, message, xp_gained=xp, levels_gained=levels, evolved=evolved)
 
     @property
     def xp_needed(self):
@@ -171,6 +199,60 @@ class Pet:
     def xp_progress(self):
         """Progress toward the next level, from 0.0 to 1.0."""
         return self.xp / self.xp_needed
+
+    # ---- Evolution ----
+
+    @property
+    def stage(self):
+        """Evolution stage index: 0 = Baby, up to len(EVOLUTION_STAGES) - 1."""
+        return sum(1 for level, _ in EVOLUTION_STAGES[1:] if self.level >= level)
+
+    @property
+    def stage_name(self):
+        return EVOLUTION_STAGES[self.stage][1]
+
+    @property
+    def next_stage_level(self):
+        """Level of the next evolution, or None when fully evolved."""
+        if self.stage + 1 < len(EVOLUTION_STAGES):
+            return EVOLUTION_STAGES[self.stage + 1][0]
+        return None
+
+    # ---- Saving ----
+
+    def to_dict(self):
+        """Everything needed to bring this pet back later (JSON-friendly)."""
+        return {
+            "name": self.name,
+            "personality": self.personality,
+            "hunger": round(self.hunger, 2),
+            "happiness": round(self.happiness, 2),
+            "energy": round(self.energy, 2),
+            "xp": self.xp,
+            "level": self.level,
+        }
+
+    @classmethod
+    def from_dict(cls, data, rng=None):
+        """Rebuild a pet from `to_dict()` data. Raises ValueError if it is unusable.
+
+        Missing stats fall back to defaults and out-of-range numbers are clamped,
+        but values of the wrong type are rejected.
+        """
+        if not isinstance(data, dict):
+            raise ValueError("pet data must be a JSON object")
+        name = data.get("name")
+        if not isinstance(name, str):
+            raise ValueError("pet name must be text")
+        numbers = {}
+        for key in ("hunger", "happiness", "energy", "xp", "level"):
+            if key not in data:
+                continue
+            value = data[key]
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                raise ValueError(f"{key} must be a number")
+            numbers[key] = value
+        return cls(name, personality=data.get("personality"), rng=rng, **numbers)
 
     # ---- Mood and talking ----
 
@@ -192,7 +274,8 @@ class Pet:
 
     def say(self, kind):
         """A random line for this situation, flavoured by personality."""
-        return pick(kind, self.personality, self.rng, name=self.name, level=self.level)
+        return pick(kind, self.personality, self.rng,
+                    name=self.name, level=self.level, stage=self.stage_name)
 
     def idle_message(self):
         """Something the pet says on its own, based on how it feels."""
