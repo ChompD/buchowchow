@@ -26,7 +26,7 @@ When you want it nearby while you work, switch to **companion mode**: the pet ho
 - A wardrobe with 15 hats, glasses, neckwear and outfits in 7 colours, with more unlocking as your pet levels up
 - Automatic saving, with time passing (gently) while the game is closed
 - Damaged save files are backed up instead of crashing the game
-- Desktop companion mode: a small, draggable, always-on-top pet with a see-through background
+- Desktop companion mode: a small, always-on-top pet with a see-through background that walks along your taskbar (or stays put when you tell it to)
 
 ## Requirements
 
@@ -76,14 +76,18 @@ Over time your pet slowly gets hungrier and less happy, and recovers energy by r
 
 Click the paw button (or press `C`) and the pet moves out onto your desktop: a small window with no border, always on top, where only the pet and its speech bubble are visible.
 
-- **Drag** the pet to move it anywhere on screen.
+- **Walking:** the pet strolls along the top of your taskbar on its own, facing the way it walks, with long rests in between so it isn't distracting. Happy pets walk more and faster; hungry or sad ones dawdle; tired ones stay put. It stops while your mouse is over it.
+- **Stay / Walk:** choose **Stay here** in the right-click menu (or press `S`) and the pet sits in one spot until you choose **Walk around** again.
+- **Drag** the pet to move it anywhere on screen. With walking on, it drops back down to the taskbar when you let go. In Stay mode it stays where you put it, and snaps neatly against the taskbar or the side of the screen if you drop it close to one.
 - **Click** it to give it a pat.
 - **Hover** over it to see its level, hunger, happiness and energy.
-- **Right-click** it for a menu: Feed, Play, Sound on/off, Wardrobe, Big window, Hide, Quit.
-- `F`, `P`, `M`, `C` and `W` work too, after clicking the pet so its window has focus.
+- **Right-click** it for a menu: Feed, Play, Sound on/off, Stay here / Walk around, Wardrobe, Big window, Hide, Quit.
+- `F`, `P`, `M`, `S`, `C` and `W` work too, after clicking the pet so its window has focus.
 - **Hide** minimizes it; click its taskbar button to bring it back.
 
-Clicks on the see-through area go straight through to whatever is behind, so the pet never gets in the way. The game remembers whether you were in companion mode and where you left the pet. If that spot is no longer on screen (say, after unplugging a monitor), it goes back to the bottom-right corner.
+Clicks on the see-through area go straight through to whatever is behind, so the pet never gets in the way. The game remembers whether you were in companion mode, whether the pet was walking or staying, and where you left it. If that spot is no longer on screen (say, after unplugging a monitor), it goes back to the bottom-right corner.
+
+Walking and snapping use your main screen. On Windows the game asks where the taskbar is; elsewhere it assumes a 48-pixel taskbar at the bottom.
 
 The see-through background uses a Windows feature (a "colour key": every pixel of one exact colour becomes invisible). On other systems, companion mode still works but has a plain background.
 
@@ -152,7 +156,8 @@ buchowchow/
 ├── companion.py         # Companion mode: the small desktop pet, dragging and its menu
 ├── wardrobe.py          # Wardrobe rules: items, slots, colours, unlocks, what the pet wears (no Pygame)
 ├── wardrobe_screen.py   # The Wardrobe screen
-├── desktop_window.py    # See-through window (Windows) and keeping the pet on screen
+├── desktop_window.py    # See-through window (Windows), finding the taskbar, snapping to edges
+├── wander.py            # When the companion walks, rests and turns around (no Pygame)
 ├── pet.py               # Pet rules: stats, actions, XP, moods, personality, evolution (no Pygame)
 ├── save_manager.py      # Saving/loading save.json, offline time, damaged-file backups
 ├── messages.py          # Everything the pet can say, by situation, personality and species
@@ -162,7 +167,7 @@ buchowchow/
 ├── assets/
 │   ├── sprites/         # Custom pet art (coming later)
 │   └── sounds/          # Optional custom sound effects
-├── tests/               # Tests for the pet rules, wardrobe, saving, messages, sounds and window placement
+├── tests/               # Tests for the pet rules, wardrobe, walking, saving, messages, sounds and window placement
 ├── docs/screenshot.png
 ├── requirements.txt     # What you need to play
 ├── requirements-dev.txt # Extra tools for development (pytest)
@@ -186,4 +191,4 @@ Saves from before species existed load as a dog.
 - [x] Phase 3: Progression and saving
 - [x] Phase 4: Desktop companion mode
 
-Ideas for later: custom pixel-art sprites, the pet walking along the bottom of the screen on its own, a tray icon, and a packaged `.exe` so it runs without Python.
+Ideas for later: a focus timer where your pet cheers you on, napping when you're away from the computer, a click-through ghost mode, custom pixel-art sprites, and a packaged `.exe` so it runs without Python.
