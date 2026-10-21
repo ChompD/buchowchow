@@ -24,9 +24,10 @@ Thumbs.db
 Desktop.ini
 .DS_Store
 
-# Local save data (added in a later phase)
+# Local save data
 save.json
-saves/
+save.json.tmp
+save.corrupt-*.json
 
 # Secrets
 .env
