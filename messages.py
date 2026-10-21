@@ -41,6 +41,11 @@ COMMON = {
         "Whoa! {name} grew into a {stage}!",
         "Look at me! I'm a {stage} now!",
     ],
+    "companion_on": [
+        "I'll keep you company!",
+        "I'll hang out right here.",
+        "Don't mind me!",
+    ],
     "welcome_back": [
         "You're back! I missed you!",
         "Yay, you're here again!",

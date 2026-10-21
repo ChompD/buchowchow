@@ -148,28 +148,38 @@ class Button:
         surface.blit(label, label.get_rect(center=body.center))
 
 
-class SoundButton(Button):
-    """A small round button with a speaker icon that toggles sound."""
+class IconButton(Button):
+    """A small round button with a drawn icon: "sound", "muted" or "paw"."""
 
-    def __init__(self, rect):
+    def __init__(self, rect, icon):
         super().__init__(rect, "", WHITE, None)
-        self.muted = False
+        self.icon = icon
 
     def draw(self, surface):
         radius = self.rect.width // 2
         center = (self.rect.centerx, self.rect.centery + (2 if self.pressed else 0))
         pygame.draw.circle(surface, PANEL_SHADOW, (self.rect.centerx, self.rect.centery + 3), radius)
         pygame.draw.circle(surface, mix(WHITE, BAR_BG, 0.8) if self.hovered else WHITE, center, radius)
+        draw_icon(surface, self.icon, center)
 
-        x, y = center[0] - 6, center[1]
-        pygame.draw.polygon(surface, TEXT, [(x - 5, y - 4), (x - 1, y - 4), (x + 4, y - 8),
-                                            (x + 4, y + 8), (x - 1, y + 4), (x - 5, y + 4)])
-        if self.muted:
-            pygame.draw.line(surface, TEXT, (x + 8, y - 4), (x + 15, y + 4), 2)
-            pygame.draw.line(surface, TEXT, (x + 8, y + 4), (x + 15, y - 4), 2)
+
+def draw_icon(surface, icon, center, color=TEXT):
+    """Small hand-drawn icons, about 20 px across."""
+    cx, cy = center
+    if icon in ("sound", "muted"):
+        x, y = cx - 6, cy
+        pygame.draw.polygon(surface, color, [(x - 5, y - 4), (x - 1, y - 4), (x + 4, y - 8),
+                                             (x + 4, y + 8), (x - 1, y + 4), (x - 5, y + 4)])
+        if icon == "muted":
+            pygame.draw.line(surface, color, (x + 8, y - 4), (x + 15, y + 4), 2)
+            pygame.draw.line(surface, color, (x + 8, y + 4), (x + 15, y - 4), 2)
         else:
-            draw_curve(surface, TEXT, (x + 5, y), (5, 5), -math.pi / 3, math.pi / 3, 2, steps=10)
-            draw_curve(surface, TEXT, (x + 5, y), (10, 10), -math.pi / 3, math.pi / 3, 2, steps=14)
+            draw_curve(surface, color, (x + 5, y), (5, 5), -math.pi / 3, math.pi / 3, 2, steps=10)
+            draw_curve(surface, color, (x + 5, y), (10, 10), -math.pi / 3, math.pi / 3, 2, steps=14)
+    elif icon == "paw":
+        pygame.draw.ellipse(surface, color, (cx - 6, cy - 1, 12, 9))
+        for dx, dy in ((-7, -4), (-2.5, -8), (2.5, -8), (7, -4)):
+            pygame.draw.circle(surface, color, (cx + dx, cy + dy), 2.6)
 
 
 def draw_panel(surface, rect, radius=18):
@@ -333,19 +343,26 @@ class PetRenderer:
     def __init__(self, z_font):
         self.z_font = z_font
 
-    def draw(self, surface, mood, ground, t, stage=0, action=None, progress=0.0):
-        """Draw the pet with its feet at `ground` (x, y)."""
+    def draw(self, surface, mood, ground, t, stage=0, action=None, progress=0.0, zoom=1.0, shadow=True):
+        """Draw the pet with its feet at `ground` (x, y).
+
+        `zoom` shrinks or grows the whole pet (the companion window uses a small
+        pet). `shadow=False` skips the ground shadow.
+        """
         pose = action_pose(action, progress) if action else idle_pose(mood, t)
         look = stage_look(stage)
-        s = look["scale"]
+        s = look["scale"] * zoom
         cx, ground_y = ground
         w = self.BODY_W * s * pose.sx
         h = self.BODY_H * s * pose.sy
+        lift = pose.lift * s
+        dx = pose.dx * s
 
-        # Ground shadow shrinks as the pet lifts off the ground.
-        shadow = pygame.Rect(0, 0, self.BODY_W * s * 0.8 * max(0.35, 1 - pose.lift / 110), 18 * s)
-        shadow.center = (cx, ground_y + 6 * s)
-        pygame.draw.ellipse(surface, GROUND_SHADOW, shadow)
+        if shadow:
+            # Ground shadow shrinks as the pet lifts off the ground.
+            shade = pygame.Rect(0, 0, self.BODY_W * s * 0.8 * max(0.35, 1 - lift / 110), 18 * s)
+            shade.center = (cx, ground_y + 6 * s)
+            pygame.draw.ellipse(surface, GROUND_SHADOW, shade)
 
         # Draw the pet on its own transparent canvas so the whole thing can rotate.
         size = round(300 * s)
@@ -355,8 +372,8 @@ class PetRenderer:
             canvas = pygame.transform.rotozoom(canvas, pose.angle, 1.0)
 
         # Keep the feet on the ground when squashed: move the centre down.
-        body_y = ground_y - h / 2 - pose.lift
-        surface.blit(canvas, canvas.get_rect(center=(cx + pose.dx, body_y)))
+        body_y = ground_y - h / 2 - lift
+        surface.blit(canvas, canvas.get_rect(center=(cx + dx, body_y)))
 
         if pose.zs:
             for i in range(3):
@@ -366,18 +383,18 @@ class PetRenderer:
                 surface.blit(z, z.get_rect(center=(cx + w * 0.42 + phase * 24 * s,
                                                   body_y - h * 0.45 - phase * 46 * s)))
 
-    def contains(self, ground, pos, stage=0):
+    def contains(self, ground, pos, stage=0, zoom=1.0):
         """True if screen position `pos` is on the pet (for click detection)."""
-        s = stage_look(stage)["scale"]
+        s = stage_look(stage)["scale"] * zoom
         cx, ground_y = ground
         rx = self.BODY_W * s / 2 + 6
-        ry = self.BODY_H * s / 2 + 14  # a little extra on top for the ears
+        ry = self.BODY_H * s / 2 + 14 * s  # a little extra on top for the ears
         dx, dy = pos[0] - cx, pos[1] - (ground_y - self.BODY_H * s / 2 - 8 * s)
         return (dx / rx) ** 2 + (dy / ry) ** 2 <= 1
 
-    def mouth_position(self, ground, stage=0):
+    def mouth_position(self, ground, stage=0, zoom=1.0):
         """Roughly where the mouth is, for crumbs while eating."""
-        s = stage_look(stage)["scale"]
+        s = stage_look(stage)["scale"] * zoom
         return (ground[0] + 20 * s, ground[1] - self.BODY_H * s / 2 + 12 * s)
 
     # ---- Body parts ----
