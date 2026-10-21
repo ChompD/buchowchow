@@ -1,10 +1,12 @@
 """Companion mode: a small, borderless, always-on-top pet that lives on your desktop.
 
-- Drag the pet to move it.
-- Click the pet to give it a pat.
-- Hover over the pet to see its stats.
-- Right-click the pet for a menu (Feed, Play, Sound, Wardrobe, Big window, Hide, Quit).
-- Keyboard shortcuts F, P, M, C and W work while the pet's window is focused.
+- The pet strolls along the top of the taskbar now and then (see wander.py).
+- "Stay here" (menu or S) makes it sit in one spot instead. "Walk around" turns walking back on.
+- Drag the pet to move it. While walking is on it drops back down to the taskbar;
+  in Stay mode it stays where you put it, snapping to the taskbar or a screen side if close.
+- Click the pet to give it a pat. Hover over it to see its stats.
+- Right-click the pet for a menu (Feed, Play, Sound, Stay/Walk, Wardrobe, Big window, Hide, Quit).
+- Keyboard shortcuts F, P, M, S, C and W work while the pet's window is focused.
 """
 
 import pygame
@@ -12,9 +14,12 @@ import pygame
 import desktop_window
 import ui
 from screens import PetScreen
+from wander import Wanderer
 
 SIZE = (240, 280)
-DRAG_THRESHOLD = 4  # pixels the mouse must move before a click becomes a drag
+DRAG_THRESHOLD = 4   # pixels the mouse must move before a click becomes a drag
+GRAVITY = 1800       # how fast a dropped pet falls, in pixels per second per second
+AREA_REFRESH = 5.0   # re-check where the taskbar is every few seconds
 
 MENU_ITEM_HEIGHT = 28
 MENU_WIDTH = 150
@@ -23,6 +28,7 @@ MENU_PADDING = 6
 
 class CompanionScreen(PetScreen):
     PET_GROUND = (SIZE[0] // 2, 228)
+    FEET_Y = PET_GROUND[1] + 4   # the bottom of the paws, inside the window
     ZOOM = 0.6
     FLASH = False  # a full-window flash would show as a coloured box on the desktop
 
@@ -34,6 +40,13 @@ class CompanionScreen(PetScreen):
         self.dragging = False
         self.menu = None        # Menu while open
         self.stats_rect = pygame.Rect(20, 240, SIZE[0] - 40, 32)
+
+        self.wanderer = Wanderer()
+        self.facing = -1        # -1 = left, 1 = right
+        self.pos = None         # exact window position (floats), set on the first update
+        self.fall_speed = 0.0
+        self.area = None
+        self.area_timer = 0.0
 
     # ---- Input ----
 
@@ -53,7 +66,10 @@ class CompanionScreen(PetScreen):
                 self.react(self.pet.cuddle(), at=event.pos)
             self.end_drag()
         elif event.type == pygame.KEYDOWN:
-            self.handle_shortcut(event.key)
+            if event.key == pygame.K_s:
+                self.toggle_walking()
+            else:
+                self.handle_shortcut(event.key)
 
     def handle_menu_event(self, event):
         if event.type == pygame.MOUSEMOTION:
@@ -71,6 +87,7 @@ class CompanionScreen(PetScreen):
             ("feed", "Feed  (F)"),
             ("play", "Play  (P)"),
             ("sound", "Sound: off  (M)" if self.app.sounds.muted else "Sound: on  (M)"),
+            ("walk", "Stay here  (S)" if self.app.walking else "Walk around  (S)"),
             ("wardrobe", "Wardrobe  (W)"),
             ("big", "Big window  (C)"),
             ("hide", "Hide"),
@@ -84,6 +101,8 @@ class CompanionScreen(PetScreen):
             self.react(self.pet.play())
         elif choice == "sound":
             self.toggle_sound()
+        elif choice == "walk":
+            self.toggle_walking()
         elif choice == "wardrobe":
             self.app.open_wardrobe()
         elif choice == "big":
@@ -93,40 +112,109 @@ class CompanionScreen(PetScreen):
         elif choice == "quit":
             self.app.quit()
 
+    def toggle_walking(self):
+        self.app.walking = not self.app.walking
+        self.say(self.pet.say("walk_on" if self.app.walking else "stay"))
+        self.fall_speed = 0.0
+        if not self.app.walking:
+            self.wanderer.walking = False  # sit down right away
+        self.app.sounds.play("click")
+        self.app.save()
+
     def end_drag(self):
         if self.dragging:
-            self.app.companion_pos = self.app.window.position
+            window = self.app.window
+            if not self.app.walking:
+                # Staying put: tidy it up against the taskbar or a screen side if it's close.
+                window.position = desktop_window.snap_position(
+                    window.position, SIZE[0], self.pet_half_width(), self.FEET_Y, self.work_area())
+            self.pos = [float(v) for v in window.position]  # if walking, it falls from here
+            self.fall_speed = 0.0
+            self.app.companion_pos = window.position
             self.app.save()
         self.press = None
         self.dragging = False
+
+    # ---- Layout helpers ----
+
+    def pet_half_width(self):
+        """About half the pet's width, including ears and tail."""
+        return ui.PetRenderer.BODY_W * self.scale * 0.56
+
+    def work_area(self):
+        if self.area is None:
+            self.area = desktop_window.work_area(self.app.desktop_size())
+        return self.area
+
+    def can_walk(self):
+        """Walk only when nobody is interacting with the pet."""
+        return not (self.hovered or self.menu or self.press or self.action)
 
     # ---- Update ----
 
     def update(self, dt):
         super().update(dt)
-        mouse = desktop_mouse()
-        window_x, window_y = self.app.window.position
+        window = self.app.window
+        if self.pos is None:
+            self.pos = [float(v) for v in window.position]
+        self.area_timer -= dt
+        if self.area_timer <= 0:  # the taskbar can move or auto-hide
+            self.area, self.area_timer = None, AREA_REFRESH
 
-        # Dragging: move the window by however far the mouse moved since the press.
+        mouse = desktop_mouse()
         if self.press:
-            if not pygame.mouse.get_pressed()[0]:
-                self.end_drag()  # the button was released outside the window
-            else:
-                (start_x, start_y), (win_x, win_y) = self.press
-                dx, dy = mouse[0] - start_x, mouse[1] - start_y
-                if abs(dx) > DRAG_THRESHOLD or abs(dy) > DRAG_THRESHOLD:
-                    self.dragging = True
-                if self.dragging:
-                    self.app.window.position = (win_x + dx, win_y + dy)
+            self.drag(mouse)
+        elif self.app.walking:
+            self.move_on_its_own(dt)
 
         # Work out hover from the desktop mouse position, because the window
         # gets no mouse events at all while the cursor is over see-through parts.
+        window_x, window_y = window.position
         local = (mouse[0] - window_x, mouse[1] - window_y)
         self.hovered = self.over_pet(local) or (self.hovered and self.stats_rect.collidepoint(local))
         want_hand = self.hovered and not self.menu
         if want_hand != self.hand_cursor:
             self.hand_cursor = want_hand
             ui.set_hand_cursor(want_hand)
+
+    def drag(self, mouse):
+        """Move the window by however far the mouse moved since the press."""
+        if not pygame.mouse.get_pressed()[0]:
+            self.end_drag()  # the button was released outside the window
+            return
+        (start_x, start_y), (win_x, win_y) = self.press
+        dx, dy = mouse[0] - start_x, mouse[1] - start_y
+        if abs(dx) > DRAG_THRESHOLD or abs(dy) > DRAG_THRESHOLD:
+            self.dragging = True
+        if self.dragging:
+            self.app.window.position = (win_x + dx, win_y + dy)
+            self.pos = [float(win_x + dx), float(win_y + dy)]
+
+    def move_on_its_own(self, dt):
+        """Fall down to the taskbar if needed, then wander along it."""
+        area = self.work_area()
+        floor = desktop_window.ground_y(area, self.FEET_Y)
+        low, high = desktop_window.walk_bounds(area, SIZE[0], self.pet_half_width())
+        x, y = self.pos
+
+        if y < floor - 0.5:  # in the air: fall
+            self.fall_speed += GRAVITY * dt
+            y = min(floor, y + self.fall_speed * dt)
+            if y >= floor:
+                self.fall_speed = 0.0
+                self.start_action("land")
+                self.app.sounds.play("click")
+        else:
+            y = floor  # also pops it back up if it was dragged into the taskbar
+            if self.can_walk():
+                x = self.wanderer.update(dt, x, low, high, self.pet.mood)
+                if self.wanderer.walking:
+                    self.facing = self.wanderer.direction
+
+        self.pos = [x, y]
+        target = (round(x), round(y))
+        if self.app.window.position != target:
+            self.app.window.position = target
 
     # ---- Draw ----
 
@@ -137,7 +225,8 @@ class CompanionScreen(PetScreen):
         else:
             surface.blit(self.app.background, (0, 0))
 
-        self.draw_pet(surface, shadow=not see_through)
+        walking = self.app.walking and self.wanderer.walking and self.can_walk() and not self.fall_speed
+        self.draw_pet(surface, shadow=not see_through, walking=walking, facing=self.facing)
         self.effects.draw(surface)
         if self.message:
             # No fade-out here: half-transparent pixels would mix with the key colour.

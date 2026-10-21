@@ -270,6 +270,7 @@ ACTION_DURATIONS = {
     "playing": 1.3,
     "petted": 0.9,
     "refuse": 0.6,
+    "land": 0.35,
 }
 
 
@@ -290,6 +291,13 @@ class Pose:
     tear: float = -1.0      # 0..1 while a tear is falling, otherwise negative
     zs: bool = False        # floating "z z z"
     food: float = 0.0       # how much cookie is left (0 = no cookie)
+    step: float = None      # walking: paw step phase (None = standing still)
+
+
+def walk_pose(t):
+    """Little bouncy steps, looking where it's going (the drawing is flipped to face right)."""
+    step = t * 9
+    return Pose(lift=abs(math.sin(step)) * 4, angle=math.sin(step) * 3, look=-1, step=step)
 
 
 def idle_pose(mood, t):
@@ -338,6 +346,9 @@ def action_pose(action, p):
         return Pose(sx=1 + wobble, sy=1 - wobble, eyes="happy", mouth="smile", blush=1.5)
     if action == "refuse":
         return Pose(dx=math.sin(p * math.pi * 6) * 7 * (1 - p), eyes="closed", mouth="frown")
+    if action == "land":  # squish on touching down, then spring back
+        squish = 0.16 * (1 - p)
+        return Pose(sx=1 + squish, sy=1 - squish, eyes="closed" if p < 0.4 else "open")
     return Pose()
 
 
@@ -389,14 +400,21 @@ class PetRenderer:
         self.z_font = z_font
 
     def draw(self, surface, mood, ground, t, stage=0, action=None, progress=0.0, zoom=1.0,
-             shadow=True, species="dog", outfit=None):
+             shadow=True, species="dog", outfit=None, walking=False, facing=-1):
         """Draw the pet with its feet at `ground` (x, y).
+
+        `walking` shows walking steps; `facing` is -1 (left, as drawn) or 1 (right, mirrored).
 
         `zoom` shrinks or grows the whole pet (the companion window uses a small
         pet). `shadow=False` skips the ground shadow. `outfit` is a
         wardrobe.Outfit (or None for no clothes).
         """
-        pose = action_pose(action, progress) if action else idle_pose(mood, t)
+        if action:
+            pose = action_pose(action, progress)
+        elif walking:
+            pose = walk_pose(t)
+        else:
+            pose = idle_pose(mood, t)
         look = stage_look(stage)
         kind = species_look(species)
         s = look["scale"] * zoom
@@ -418,6 +436,8 @@ class PetRenderer:
         canvas = pygame.Surface((size, size), pygame.SRCALPHA)
         worn = {slot: (key, color) for slot, key, color in outfit.worn()} if outfit else {}
         self._draw_pet(canvas, pose, kind, worn, size / 2, size / 2, w, h, t, s)
+        if facing > 0:
+            canvas = pygame.transform.flip(canvas, True, False)  # face right
         if pose.angle:
             canvas = pygame.transform.rotozoom(canvas, pose.angle, 1.0)
 
@@ -479,7 +499,10 @@ class PetRenderer:
 
         for side in (-1, 1):
             paw = pygame.Rect(0, 0, 40 * s, 20 * s)
-            paw.center = (bx + side * w * 0.22, by + h * 0.44)
+            lift = 0.0
+            if pose.step is not None:  # walking: paws take turns lifting
+                lift = max(0.0, math.sin(pose.step + (0 if side < 0 else math.pi))) * 6 * s
+            paw.center = (bx + side * w * 0.22, by + h * 0.44 - lift)
             pygame.draw.ellipse(canvas, outline, paw.inflate(6, 6))
             pygame.draw.ellipse(canvas, body_color, paw)
 

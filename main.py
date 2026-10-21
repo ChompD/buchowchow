@@ -47,9 +47,11 @@ class App:
         self.see_through = False    # did making the background invisible work?
         self.companion_pos = None   # where the companion window was last placed
         self.wardrobe_from_companion = False
+        self.walking = True         # does the companion wander, or stay in one spot?
 
         loaded = self.save_manager.load()
         self.companion_pos = self._checked_position(loaded.settings.get("companion_pos"))
+        self.walking = loaded.settings.get("walking") is not False  # on unless switched off
         if loaded.pet:
             screen_class = CompanionScreen if loaded.settings.get("companion") is True else GameScreen
             self.show(screen_class(self, loaded.pet, seconds_away=loaded.seconds_away))
@@ -75,7 +77,7 @@ class App:
             window.size = companion.SIZE
             window.always_on_top = True
             window.position = self.companion_pos or desktop_window.default_position(
-                companion.SIZE, self._desktop_size())
+                companion.SIZE, self.desktop_size())
             self.see_through = desktop_window.set_see_through(window.handle)
         else:
             desktop_window.clear_see_through(window.handle)
@@ -132,6 +134,7 @@ class App:
         return {
             "companion": self.in_companion or in_wardrobe_from_companion,
             "companion_pos": list(self.companion_pos) if self.companion_pos else None,
+            "walking": self.walking,
         }
 
     def save(self):
@@ -146,7 +149,7 @@ class App:
     # ---- Helpers ----
 
     @staticmethod
-    def _desktop_size():
+    def desktop_size():
         sizes = pygame.display.get_desktop_sizes()
         return sizes[0] if sizes else (1280, 720)
 
@@ -154,7 +157,7 @@ class App:
         """A saved window position, if it is valid and still on screen."""
         if (isinstance(value, (list, tuple)) and len(value) == 2
                 and all(isinstance(v, int) and not isinstance(v, bool) for v in value)
-                and desktop_window.fits_on_screen(value, companion.SIZE, self._desktop_size())):
+                and desktop_window.fits_on_screen(value, companion.SIZE, self.desktop_size())):
             return tuple(value)
         return None
 

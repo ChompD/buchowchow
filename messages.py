@@ -48,6 +48,16 @@ COMMON = {
         "I'll hang out right here.",
         "Don't mind me!",
     ],
+    "walk_on": [
+        "Let's go for a walk!",
+        "Adventure time!",
+        "I'll go stretch my legs.",
+    ],
+    "stay": [
+        "Okay, I'll stay right here.",
+        "Sitting pretty!",
+        "I'll wait here for you.",
+    ],
     "outfit": [
         "How do I look?",
         "I feel fancy!",
@@ -127,6 +137,8 @@ BY_SPECIES = {
         "idle_happy": ["*tail wagging intensifies*"],
         "welcome_back": ["*zoomies* You're home!"],
         "outfit": ["*proud tail wag*"],
+        "stay": ["*sits like a good pup*"],
+        "walk_on": ["Walkies!!"],
     },
     "cat": {
         "petted": ["Purrr...", "Mrrrp!"],
