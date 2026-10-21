@@ -30,8 +30,10 @@ NOTICE_DISTANCE = 200  # the pet notices the cursor when it comes this close (pi
 CURSOR_SOUNDS = {"dog": "bark", "cat": "meow", "bunny": "thump"}
 
 MENU_ITEM_HEIGHT = 28
-MENU_WIDTH = 150
+MENU_MIN_WIDTH = 150
 MENU_PADDING = 6
+MENU_CLOSE_DELAY = 0.6  # the menu closes once the cursor has been away from it this long (seconds)
+MENU_NEAR = 12          # how close (pixels) counts as still "at" the menu
 
 
 class CompanionScreen(PetScreen):
@@ -61,6 +63,9 @@ class CompanionScreen(PetScreen):
     # ---- Input ----
 
     def handle_event(self, event):
+        if event.type == pygame.WINDOWFOCUSLOST:
+            self.menu = None  # you clicked on another app: close the menu
+            return
         if self.menu:
             self.handle_menu_event(event)
             return
@@ -147,8 +152,9 @@ class CompanionScreen(PetScreen):
 
     def apply_ghost(self, over_pet):
         """Make the window click-through and faded (or solid again) when that changes."""
-        ctrl = self.app.ghost and desktop_window.ctrl_held()  # only ask Windows when it matters
-        state = desktop_window.ghost_style(self.app.ghost, ctrl, over_pet)
+        ghost = self.app.ghost and self.menu is None  # pause ghost mode while the menu is open
+        ctrl = ghost and desktop_window.ctrl_held()  # only ask Windows when it matters
+        state = desktop_window.ghost_style(ghost, ctrl, over_pet)
         if state != self.ghost_state and self.app.see_through:
             click_through, alpha = state
             handle = self.app.window.handle
@@ -214,6 +220,8 @@ class CompanionScreen(PetScreen):
         window_x, window_y = window.position
         local = (mouse[0] - window_x, mouse[1] - window_y)
         over_pet = self.over_pet(local)
+        if self.menu and not self.menu.keep_open(local, over_pet, dt):
+            self.menu = None  # the cursor wandered off
         ghosted = self.apply_ghost(over_pet)
         # A ghost can't be touched, so pointing at it doesn't count as hovering.
         self.hovered = not ghosted and (over_pet or (self.hovered and self.stats_rect.collidepoint(local)))
@@ -323,15 +331,31 @@ class CompanionScreen(PetScreen):
 
 
 class Menu:
-    """A small right-click menu that stays inside the window."""
+    """A small right-click menu that stays inside the window.
+
+    It closes itself once the cursor has wandered away from it (see keep_open),
+    because clicks outside the pet go to other apps, not to us.
+    """
 
     def __init__(self, items, pos, window_size, font):
         self.items = items
         self.font = font
         height = len(items) * MENU_ITEM_HEIGHT + 2 * MENU_PADDING
-        self.rect = pygame.Rect(pos[0], pos[1], MENU_WIDTH, height)
+        widest = max(font.size(label)[0] for _, label in items) if font else 0
+        width = min(window_size[0], max(MENU_MIN_WIDTH, widest + 2 * MENU_PADDING + 20))
+        self.rect = pygame.Rect(pos[0], pos[1], width, height)
         self.rect.clamp_ip(pygame.Rect((0, 0), window_size))
         self.hovered = None
+        self.away_time = 0.0
+
+    def keep_open(self, pos, near_pet, dt):
+        """Call every frame. Returns False once the cursor has been away from the menu
+        (and the pet) for MENU_CLOSE_DELAY seconds; a short wobble outside is fine."""
+        if near_pet or self.rect.inflate(2 * MENU_NEAR, 2 * MENU_NEAR).collidepoint(pos):
+            self.away_time = 0.0
+        else:
+            self.away_time += dt
+        return self.away_time < MENU_CLOSE_DELAY
 
     def item_rect(self, index):
         return pygame.Rect(self.rect.x + MENU_PADDING, self.rect.y + MENU_PADDING + index * MENU_ITEM_HEIGHT,
