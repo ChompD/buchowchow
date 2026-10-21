@@ -35,8 +35,8 @@ This project uses [pygame-ce](https://pyga.me/), the community edition of Pygame
 ## Installation
 
 ```powershell
-git clone https://github.com/<your-username>/desktop-pet.git
-cd desktop-pet
+git clone https://github.com/ChompD/buchowchow.git
+cd buchowchow
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
@@ -75,7 +75,7 @@ python -m pytest
 ## Project structure
 
 ```
-desktop-pet/
+buchowchow/
 ├── main.py              # Window, main loop and screens (naming, game)
 ├── pet.py               # Pet rules: stats, actions, XP, moods (no Pygame)
 ├── ui.py                # Drawing: colours, buttons, bars, speech bubble, the pet
