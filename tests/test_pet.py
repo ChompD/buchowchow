@@ -2,7 +2,12 @@
 
 import pytest
 
+import random
+
+from messages import PERSONALITIES
 from pet import (
+    CUDDLE_COOLDOWN,
+    CUDDLE_HAPPINESS,
     DEFAULT_NAME,
     FEED_XP,
     MAX_NAME_LENGTH,
@@ -64,7 +69,8 @@ def test_feeding_a_full_pet_does_nothing():
     assert result.xp_gained == 0
     assert pet.xp == 0
     assert pet.hunger == 5
-    assert "full" in result.message
+    assert result.kind == "too_full"
+    assert result.message
 
 
 def test_hunger_never_goes_below_zero():
@@ -89,7 +95,8 @@ def test_tired_pet_refuses_to_play():
     result = pet.play()
     assert result.xp_gained == 0
     assert pet.happiness == 40
-    assert "sleepy" in result.message
+    assert result.kind == "too_tired"
+    assert result.message
 
 
 def test_happiness_never_goes_above_100():
@@ -132,7 +139,8 @@ def test_action_reports_level_up():
     pet = Pet("Bean", hunger=80, xp=xp_for_next_level(1) - 1)
     result = pet.feed()
     assert result.levels_gained == 1
-    assert "Level up" in result.message
+    assert result.kind == "fed"
+    assert str(pet.level) in result.message
 
 
 def test_xp_progress_is_a_fraction():
@@ -177,3 +185,60 @@ def test_mood_follows_stats(stats, mood):
     pet = Pet("Bean", **stats)
     assert pet.mood == mood
     assert pet.name in pet.mood_text()
+
+
+# ---- Personality ----
+
+def test_new_pet_gets_a_valid_personality():
+    assert Pet("Bean").personality in PERSONALITIES
+
+
+def test_chosen_personality_is_kept():
+    assert Pet("Bean", personality="foodie").personality == "foodie"
+
+
+def test_unknown_personality_is_replaced_with_a_valid_one():
+    assert Pet("Bean", personality="grumpy").personality in PERSONALITIES
+
+
+def test_seeded_pets_are_repeatable():
+    a = Pet("Bean", rng=random.Random(7))
+    b = Pet("Bean", rng=random.Random(7))
+    assert a.personality == b.personality
+    assert a.feed().message == b.feed().message
+
+
+@pytest.mark.parametrize("personality", PERSONALITIES)
+@pytest.mark.parametrize("stats", [
+    dict(hunger=80), dict(hunger=20, energy=10), dict(hunger=20, happiness=10),
+    dict(hunger=20, happiness=90), dict(hunger=20, happiness=50),
+])
+def test_pet_always_has_something_to_say(personality, stats):
+    pet = Pet("Bean", personality=personality, **stats)
+    assert pet.idle_message()
+
+
+# ---- Petting ----
+
+def test_petting_raises_happiness_without_xp():
+    pet = Pet("Bean", happiness=50)
+    result = pet.cuddle()
+    assert result.kind == "petted"
+    assert result.xp_gained == 0
+    assert pet.happiness == 50 + CUDDLE_HAPPINESS
+
+
+def test_petting_has_a_cooldown():
+    pet = Pet("Bean", happiness=50)
+    pet.cuddle()
+    pet.cuddle()  # too soon: still reacts, but no extra happiness
+    assert pet.happiness == 50 + CUDDLE_HAPPINESS
+
+
+def test_petting_works_again_after_cooldown():
+    pet = Pet("Bean", happiness=50)
+    pet.cuddle()
+    pet.update(CUDDLE_COOLDOWN)
+    before = pet.happiness
+    pet.cuddle()
+    assert pet.happiness > before
