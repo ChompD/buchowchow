@@ -71,6 +71,52 @@ def clear_see_through(hwnd):
         pass
 
 
+TASKBAR_GUESS = 48  # used when we can't ask Windows where the taskbar is
+
+
+def work_area(desktop_size):
+    """(left, top, right, bottom) of the main screen, not counting the taskbar."""
+    if supports_transparency():
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            rect = wintypes.RECT()
+            SPI_GETWORKAREA = 0x0030
+            if ctypes.windll.user32.SystemParametersInfoW(SPI_GETWORKAREA, 0, ctypes.byref(rect), 0):
+                if rect.right > rect.left and rect.bottom > rect.top:
+                    return (rect.left, rect.top, rect.right, rect.bottom)
+        except (AttributeError, OSError):
+            pass
+    width, height = desktop_size
+    return (0, 0, width, height - TASKBAR_GUESS)
+
+
+def ground_y(area, feet_y):
+    """Window y that puts the pet's feet (at `feet_y` inside the window) on top of the taskbar."""
+    return area[3] - feet_y
+
+
+def walk_bounds(area, window_width, pet_half_width):
+    """Smallest and largest window x that keep the pet's body on screen."""
+    middle = window_width / 2
+    return (area[0] - middle + pet_half_width, area[2] - middle - pet_half_width)
+
+
+def snap_position(position, window_width, pet_half_width, feet_y, area, distance=50):
+    """Snap a dropped pet flush against the taskbar or a screen side if it's close to one."""
+    x, y = position
+    floor = ground_y(area, feet_y)
+    if abs(y - floor) <= distance:
+        y = floor
+    low, high = walk_bounds(area, window_width, pet_half_width)
+    if abs(x - low) <= distance:
+        x = low
+    elif abs(x - high) <= distance:
+        x = high
+    return (round(x), round(y))
+
+
 def default_position(window_size, desktop_size, margin=(40, 90)):
     """Bottom-right corner of the screen, above the taskbar."""
     return (desktop_size[0] - window_size[0] - margin[0],

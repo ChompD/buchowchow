@@ -2,7 +2,7 @@
 
 import pytest
 
-from desktop_window import default_position, fits_on_screen
+from desktop_window import default_position, fits_on_screen, ground_y, snap_position, walk_bounds, work_area
 
 DESKTOP = (1920, 1080)
 WINDOW = (240, 280)
@@ -22,3 +22,41 @@ def test_positions_partly_on_screen_are_kept(pos):
 @pytest.mark.parametrize("pos", [(-500, 0), (3000, 500), (100, -400), (100, 1200), (-2000, -2000)])
 def test_positions_off_screen_are_rejected(pos):
     assert not fits_on_screen(pos, WINDOW, DESKTOP)
+
+
+# ---- Taskbar and edges ----
+
+AREA = (0, 0, 1920, 1032)   # a screen with a 48 px taskbar at the bottom
+FEET_Y = 232                # where the paws are inside the companion window
+HALF = 64                   # about half the pet's width
+
+
+def test_work_area_is_a_sensible_rectangle():
+    left, top, right, bottom = work_area((1920, 1080))
+    assert right > left and bottom > top
+    assert bottom <= 1080
+
+
+def test_ground_puts_the_feet_on_the_taskbar():
+    assert ground_y(AREA, FEET_Y) + FEET_Y == AREA[3]
+
+
+def test_walk_bounds_keep_the_pet_on_screen():
+    low, high = walk_bounds(AREA, WINDOW[0], HALF)
+    assert low + WINDOW[0] / 2 - HALF == AREA[0]
+    assert high + WINDOW[0] / 2 + HALF == AREA[2]
+
+
+def test_dropping_near_the_taskbar_snaps_onto_it():
+    floor = ground_y(AREA, FEET_Y)
+    assert snap_position((800, floor - 30), WINDOW[0], HALF, FEET_Y, AREA) == (800, floor)
+
+
+def test_dropping_near_a_side_snaps_against_it():
+    low, high = walk_bounds(AREA, WINDOW[0], HALF)
+    assert snap_position((low + 20, 300), WINDOW[0], HALF, FEET_Y, AREA)[0] == round(low)
+    assert snap_position((high - 20, 300), WINDOW[0], HALF, FEET_Y, AREA)[0] == round(high)
+
+
+def test_dropping_in_the_middle_stays_put():
+    assert snap_position((800, 300), WINDOW[0], HALF, FEET_Y, AREA) == (800, 300)
