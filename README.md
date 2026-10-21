@@ -1,6 +1,6 @@
 # Desktop Pet
 
-A cute, cozy virtual pet built with Python and Pygame. Name your pet, feed it, play with it, pet it, and watch it level up.
+A cute, cozy virtual pet built with Python and Pygame. Name your pet, feed it, play with it, pet it, and watch it level up and grow from a baby into royalty.
 
 The long-term goal is a real desktop companion: a small floating pet that stays on your screen while you use other apps.
 
@@ -19,12 +19,13 @@ The long-term goal is a real desktop companion: a small floating pet that stays 
 - Action animations: munching a cookie, a spinning jump, a squishy wobble when petted, and a head shake when it says no
 - Speech bubbles with random lines, plus the pet chatting on its own now and then
 - Sound effects, generated in code (no audio files needed), with a mute button
-- Visual effects: floating "+XP" text, sparkles, hearts, crumbs, and a level-up burst
+- Visual effects: floating "+XP" text, sparkles, hearts, crumbs, and level-up and evolution bursts
+- Four evolution stages, each bigger and with a new accessory
+- Automatic saving, with time passing (gently) while the game is closed
+- Damaged save files are backed up instead of crashing the game
 
 **Planned**
 
-- Evolution stages unlocked at higher levels
-- Saving and loading progress (JSON), including stat changes while the app is closed
 - Desktop companion mode: a small, draggable, always-on-top window
 
 ## Requirements
@@ -69,6 +70,33 @@ python main.py
 
 Over time your pet slowly gets hungrier and less happy, and recovers energy by resting.
 
+### Evolution
+
+Your pet grows as it levels up. Each stage is a bit bigger and unlocks an accessory:
+
+| Stage | Level | Look |
+|---|---|---|
+| Baby | 1 | Small and round |
+| Junior | 3 | Adds a bow |
+| Adult | 6 | Full size, with a bell collar |
+| Royal | 10 | Wears a crown |
+
+### Saving
+
+Your pet is saved to `save.json` in the project folder:
+
+- when you close the window,
+- every 30 seconds while you play,
+- right after it evolves.
+
+Next time you start the game, your pet is loaded automatically.
+
+While the game is closed, time still passes for your pet, but 80 times slower, and at most 8 hours count. After a night away it will be hungry and want attention, but it's never in danger.
+
+If the save file is damaged, the game doesn't crash. It renames the file to `save.corrupt-<date>.json` (so nothing is lost) and starts a new pet.
+
+To start over with a new pet, close the game and delete `save.json`.
+
 ### Custom sounds
 
 The sound effects are generated in code. To use your own, put a `.wav` or `.ogg` file in `assets/sounds/` named after the effect: `fed`, `played`, `petted`, `refuse`, `level_up` or `click` (for example `assets/sounds/level_up.wav`).
@@ -85,15 +113,16 @@ python -m pytest
 ```
 buchowchow/
 ├── main.py              # Window, main loop and screens (naming, game)
-├── pet.py               # Pet rules: stats, actions, XP, moods, personality (no Pygame)
+├── pet.py               # Pet rules: stats, actions, XP, moods, personality, evolution (no Pygame)
+├── save_manager.py      # Saving/loading save.json, offline time, damaged-file backups
 ├── messages.py          # Everything the pet can say, by situation and personality
 ├── ui.py                # Drawing: colours, buttons, bars, speech bubble, the pet and its animations
-├── effects.py           # Particles, floating text and the level-up banner
+├── effects.py           # Particles, floating text and the level-up / evolution banner
 ├── sounds.py            # Generated sound effects
 ├── assets/
 │   ├── sprites/         # Custom pet art (coming later)
 │   └── sounds/          # Optional custom sound effects
-├── tests/               # Tests for the pet rules, messages and sounds
+├── tests/               # Tests for the pet rules, saving, messages and sounds
 ├── docs/screenshot.png
 ├── requirements.txt     # What you need to play
 ├── requirements-dev.txt # Extra tools for development (pytest)
@@ -108,5 +137,5 @@ Animations work as **poses**: each frame, `ui.idle_pose` (for moods) or `ui.acti
 
 - [x] Phase 1: Basic working pet
 - [x] Phase 2: Personality and animation
-- [ ] Phase 3: Progression and saving
+- [x] Phase 3: Progression and saving
 - [ ] Phase 4: Desktop companion mode
